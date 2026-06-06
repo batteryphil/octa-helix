@@ -1,0 +1,280 @@
+========================================================================
+  MAMBA3 TITAN — BENCHMARK REPORT  |  Step 20,000 / 20,000
+  UTC: 2026-05-29T10:05:26.895471
+========================================================================
+
+OVERALL SUMMARY
+───────────────
+  Pass rate          : 0/21  (0.0%)
+  </think> closure   : 0.0% of prompts
+  Avg think tokens   : 399
+  Avg answer tokens  : 0
+  Avg think rep rate : 5.2%
+  Avg answer rep rate: 0.0%
+  Avg gen time       : 34.92s  (11 tok/s)
+  Held-out perplexity: 5.85
+  Router temperature : 1.0
+  VRAM               : 3.45 / 12.48 GB
+
+BY CATEGORY
+───────────
+  code_algorithm            0/1 (0%)
+  code_python               0/2 (0%)
+  common_sense              0/2 (0%)
+  factual_history           0/3 (0%)
+  factual_science           0/2 (0%)
+  language_counting         0/2 (0%)
+  logic_counterfactual      0/1 (0%)
+  logic_deduction           0/1 (0%)
+  logic_sequence            0/1 (0%)
+  math_algebra              0/1 (0%)
+  math_arithmetic           0/2 (0%)
+  math_calculus             0/1 (0%)
+  word_problem              0/2 (0%)
+
+DETAILED RESULTS
+────────────────
+
+[01] factual_history | ❌ FAIL
+     Prompt       : Who was the 16th president of the United States?
+     Think tokens : 400  Rep=6.8%  Entropy=7.151
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 32.78s
+     Think kw score : 0.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1516, 'summary': 0.1445, 'code': 0.1423, 'chat': 0.1369, 'factual': 0.1126, 'logic': 0.1057, 'math': 0.1038, 'general': 0.1025}
+     <think>  : Okay, so the user is asking who was the 16th president of the United States. Let me start by recalling what we know about the US presidency. The current president is Donald Trump, who took office on January 20, 2017. Before him were George Washington, Thomas Jefferson, and James Madison. So, basical
+     Answer   : 
+
+[02] factual_history | ❌ FAIL
+     Prompt       : In what year did World War II end?
+     Think tokens : 400  Rep=5.2%  Entropy=6.887
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 32.74s
+     Think kw score : 80.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.167, 'summary': 0.1427, 'chat': 0.142, 'code': 0.1397, 'factual': 0.1119, 'logic': 0.1028, 'general': 0.0971, 'math': 0.0968}
+     <think>  : Okay, so I need to find the year World War II ended. Let me start by recalling what happened during the war. During World War II, Germany and Japan invaded Poland in 1939. In 1941, they declared war on the United States. The US sent troops to Europe but it was a brief conflict that lasted less than
+     Answer   : 
+
+[03] factual_history | ❌ FAIL
+     Prompt       : What is the chemical symbol for gold?
+     Think tokens : 400  Rep=4.2%  Entropy=7.004
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 33.12s
+     Think kw score : 60.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1547, 'code': 0.1487, 'summary': 0.1383, 'chat': 0.1263, 'factual': 0.1118, 'general': 0.1116, 'logic': 0.1059, 'math': 0.1026}
+     <think>  : Okay, so I need to figure out the chemical symbol for gold. Let me start by recalling some basic chemistry concepts. The element gold has atomic number 79 and it's a metal with a yellowish color. It's not an alkali or alkaline metal like sodium but an alpha-metal that can form compounds with other e
+     Answer   : 
+
+[04] factual_science | ❌ FAIL
+     Prompt       : What is the speed of light in a vacuum?
+     Think tokens : 400  Rep=4.2%  Entropy=6.934
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 33.6s
+     Think kw score : 60.0%  Answer kw score: 0.0%
+     Arm routing  : {'code': 0.1527, 'misc': 0.1468, 'summary': 0.1384, 'chat': 0.1263, 'factual': 0.1119, 'logic': 0.1117, 'general': 0.1077, 'math': 0.1044}
+     <think>  : Okay, so I need to figure out the speed of light in a vacuum. Let me start by recalling some basic physics concepts. First off, light is electromagnetic radiation that travels through empty space at the speed of 186,282 miles per second (186,000 km/s). So, what's the speed of light in a vacuum?
+
+I k
+     Answer   : 
+
+[05] factual_science | ❌ FAIL
+     Prompt       : How many planets are in our solar system?
+     Think tokens : 400  Rep=4.0%  Entropy=6.928
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.56s
+     Think kw score : 0.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1603, 'summary': 0.1511, 'code': 0.147, 'chat': 0.1314, 'factual': 0.1097, 'logic': 0.1021, 'math': 0.1014, 'general': 0.097}
+     <think>  : Okay, the user is asking how many planets are in our solar system. Let me think...
+
+The official answer sheet for this question would probably be the official NASA website. It says "the number of known planets." But what does that mean? It could just refer to the currently known planets, but it coul
+     Answer   : 
+
+[06] math_arithmetic | ❌ FAIL
+     Prompt       : If a train leaves at 9am traveling at 60mph and another leaves the same station at 10am traveling at 80mph in the same direction, at what time does the second train catch the first?
+     Think tokens : 400  Rep=5.0%  Entropy=6.781
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 37.93s
+     Think kw score : 16.7%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1701, 'summary': 0.1524, 'code': 0.1443, 'chat': 0.1398, 'factual': 0.1088, 'logic': 0.1036, 'general': 0.0937, 'math': 0.0873}
+     <think>  : Okay, the user is asking when a train leaves a station at 9am and arrives at 10am. I need to find out how long it will take for that second train to arrive after the first one has left.
+
+Let me start by thinking about the direction of travel. Both trains are heading straight east from their respecti
+     Answer   : 
+
+[07] math_arithmetic | ❌ FAIL
+     Prompt       : What is 17 multiplied by 23?
+     Think tokens : 400  Rep=5.8%  Entropy=6.738
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 35.05s
+     Think kw score : 50.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1683, 'code': 0.1467, 'summary': 0.1454, 'chat': 0.135, 'factual': 0.1116, 'logic': 0.107, 'general': 0.0954, 'math': 0.0906}
+     <think>  : Okay, the user is asking about 17 multiplied by 23. Let me start by recalling what multiplication is. It's basically adding or subtracting two numbers and then dividing them to get a new number. So, for example:
+
+17 × 23 = (7 × 7) + (1 × 3) + ... + (9 × 9) = 49 + 21 + 1 + 15 = 87
+
+So, this is an add
+     Answer   : 
+
+[08] math_algebra | ❌ FAIL
+     Prompt       : Solve for x: 3x + 7 = 22
+     Think tokens : 400  Rep=4.0%  Entropy=6.713
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.37s
+     Think kw score : 66.7%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1631, 'code': 0.1613, 'summary': 0.1341, 'chat': 0.1318, 'logic': 0.1148, 'factual': 0.1051, 'general': 0.0969, 'math': 0.093}
+     <think>  : Okay, I need to solve this equation for x: 3x + 7 = 22. Let's start by simplifying the expression. 3x is equal to... oh, wait! This is a quadratic equation with 2 on both sides of it. So maybe I should factor out one of those terms to make things simpler.
+
+Wait, let me think more about this. I need
+     Answer   : 
+
+[09] math_calculus | ❌ FAIL
+     Prompt       : What is the derivative of f(x) = x^3 + 2x^2 - 5x + 7?
+     Think tokens : 400  Rep=6.5%  Entropy=6.298
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 36.08s
+     Think kw score : 20.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1778, 'code': 0.1532, 'chat': 0.1405, 'summary': 0.1393, 'logic': 0.1092, 'factual': 0.1061, 'general': 0.0879, 'math': 0.086}
+     <think>  : Okay, so I need to find the derivative of f(x) = x^3 + 2x² - 5x + 7. Let's start by writing it as a function of x:
+
+f(x) = x³ + 2x² - 5x + 7. Let me rewrite that in terms of its own variable, u:
+
+u^(3) + 2u² - 5u + 7 = (u^2)^3 + 2u^2 (-5u + 7).
+
+Now, let's try to simplify the whole thing using parti
+     Answer   : 
+
+[10] logic_deduction | ❌ FAIL
+     Prompt       : All mammals are warm-blooded. Dolphins are mammals. Are dolphins warm-blooded?
+     Think tokens : 400  Rep=4.2%  Entropy=7.003
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 35.63s
+     Think kw score : 33.3%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1853, 'summary': 0.1433, 'code': 0.1368, 'chat': 0.1333, 'factual': 0.1127, 'logic': 0.107, 'general': 0.0942, 'math': 0.0875}
+     <think>  : Okay, so I need to figure out if dolphins are warm-blooded. Let me start by recalling some basic facts about mammals and their blood types. Dolphins are mammals, right? And they have four blood types: A, B, AB, and O. But what's the difference between these types and what we usually think of as warm
+     Answer   : 
+
+[11] logic_counterfactual | ❌ FAIL
+     Prompt       : If you have a 3-gallon jug and a 5-gallon jug, how do you measure exactly 4 gallons?
+     Think tokens : 400  Rep=6.2%  Entropy=6.678
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 36.15s
+     Think kw score : 50.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1821, 'code': 0.1524, 'summary': 0.1436, 'chat': 0.135, 'logic': 0.1084, 'factual': 0.1077, 'math': 0.0868, 'general': 0.084}
+     <think>  : Okay, the user is asking how to measure exactly 4 gallons in a 3-gallon jug and 5 gallons in a 5-gallon jug. Let me start by recalling the principle of mass conservation: the sum of all masses in any system stays constant over time. So, if you have a container with a certain amount of liquid, then a
+     Answer   : 
+
+[12] logic_sequence | ❌ FAIL
+     Prompt       : What comes next in the sequence: 2, 6, 12, 20, 30, ?
+     Think tokens : 400  Rep=4.5%  Entropy=6.882
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 35.31s
+     Think kw score : 0.0%  Answer kw score: 0.0%
+     Arm routing  : {'code': 0.1619, 'summary': 0.1469, 'misc': 0.144, 'chat': 0.1237, 'logic': 0.1167, 'factual': 0.1073, 'math': 0.1013, 'general': 0.0983}
+     <think>  : Okay, the user is asking about the sequence: 2, 6, 12, 20, 30. Let's see...
+
+The user mentioned that they're given two integers, and asked to find out what comes next in the sequence. So, if I'm right, it means we have two numbers and need to determine their relationship with each other. Right? In t
+     Answer   : 
+
+[13] language_counting | ❌ FAIL
+     Prompt       : How many times does the letter 'r' appear in the word 'strawberry'?
+     Think tokens : 400  Rep=4.0%  Entropy=6.864
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 35.36s
+     Think kw score : 80.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1852, 'code': 0.1463, 'summary': 0.1402, 'chat': 0.1322, 'factual': 0.1068, 'logic': 0.0978, 'general': 0.097, 'math': 0.0945}
+     <think>  : Okay, the user is asking how many times the letter 'r' appears in the word "strawberry." I need to translate that into math. So let's start by understanding what we're trying to achieve.
+
+First of all, we have "how many times" or "how often". The "r" could be any letter, so it can appear multiple ti
+     Answer   : 
+
+[14] language_counting | ❌ FAIL
+     Prompt       : How many syllables are in the word 'extraordinary'?
+     Think tokens : 400  Rep=5.0%  Entropy=6.704
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.87s
+     Think kw score : 75.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1835, 'chat': 0.1408, 'code': 0.1368, 'summary': 0.1364, 'factual': 0.1121, 'logic': 0.1001, 'general': 0.0969, 'math': 0.0934}
+     <think>  : Okay, the user is asking how many syllables are in the word 'extraordinary.' Let me think...
+
+In English, there's a distinction between plural and singular forms. If I recall correctly, the word 'extreme' has four syllables: two long vowels followed by two short ones (like 'die,' 'dead'). So, the co
+     Answer   : 
+
+[15] code_python | ❌ FAIL
+     Prompt       : Write a Python function that returns True if a number is prime, False otherwise.
+     Think tokens : 389  Rep=6.7%  Entropy=6.855
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 33.73s
+     Think kw score : 33.3%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1673, 'code': 0.1521, 'summary': 0.1436, 'chat': 0.1346, 'factual': 0.1075, 'logic': 0.105, 'general': 0.0962, 'math': 0.0937}
+     <think>  : Okay, the user is asking for a function that returns true if a number is prime. Let me start by recalling what I know about primality testing. Prime numbers are positive integers greater than 1 that have no non-trivial factors. Non-trivial means that they aren't multiples of any other number.
+
+So, i
+     Answer   : 
+
+[16] code_python | ❌ FAIL
+     Prompt       : Write a Python function to reverse a string without using slicing.
+     Think tokens : 400  Rep=3.2%  Entropy=7.210
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.68s
+     Think kw score : 40.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1773, 'code': 0.1469, 'summary': 0.1465, 'chat': 0.1378, 'factual': 0.1117, 'logic': 0.1019, 'general': 0.0901, 'math': 0.0879}
+     <think>  : Okay, so I need to write a Python function that reverses a string without using slice indexing. Let's start by defining the problem statement. The goal is to reverse a string without using slicing (indexing). For example: "Hello World" would be reversed as "WoHlld." So, it's just reversing the strin
+     Answer   : 
+
+[17] code_algorithm | ❌ FAIL
+     Prompt       : Explain the time complexity of bubble sort and why.
+     Think tokens : 400  Rep=4.8%  Entropy=7.004
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.38s
+     Think kw score : 66.7%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1602, 'code': 0.1496, 'summary': 0.1455, 'chat': 0.1312, 'factual': 0.113, 'logic': 0.1028, 'general': 0.0993, 'math': 0.0984}
+     <think>  : Okay, the user is asking about the time complexity of bubble sort. Let me start by recalling what this algorithm does and how it works. Bubble sort sorts an array in place, so that's the main function here. It basically goes through each element once to compare with its neighboring elements and swap
+     Answer   : 
+
+[18] common_sense | ❌ FAIL
+     Prompt       : If I put an ice cube in a cup of hot coffee, what happens to the ice?
+     Think tokens : 400  Rep=6.0%  Entropy=6.776
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 35.36s
+     Think kw score : 100.0%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1706, 'code': 0.1589, 'summary': 0.1431, 'chat': 0.1182, 'logic': 0.1118, 'factual': 0.1073, 'general': 0.0952, 'math': 0.0949}
+     <think>  : Okay, so I need to figure out what happens when you put an ice cube in a cup of hot coffee. Let me start by recalling the scenario first. A regular-sized ice cube will float in the cup with some space above it. But if you put one into boiling water, it may melt quickly because of its small size and
+     Answer   : 
+
+[19] common_sense | ❌ FAIL
+     Prompt       : Why do we see lightning before we hear thunder?
+     Think tokens : 400  Rep=4.5%  Entropy=7.009
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 34.39s
+     Think kw score : 33.3%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1645, 'code': 0.1471, 'summary': 0.1467, 'chat': 0.1315, 'factual': 0.1094, 'logic': 0.105, 'math': 0.098, 'general': 0.0979}
+     <think>  : Okay, the user is asking why lightning precedes thunder. Let me start by recalling what I know about lightning and thunderstorms. Lightning usually starts when a cloud in the atmosphere becomes positively charged due to solar wind particles or other ionization processes. That causes an electrical fi
+     Answer   : 
+
+[20] word_problem | ❌ FAIL
+     Prompt       : A store sells apples for $0.50 each and oranges for $0.75 each. If Sarah buys 4 apples and 3 oranges, how much does she spend in total?
+     Think tokens : 400  Rep=10.0%  Entropy=6.367
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 37.22s
+     Think kw score : 85.7%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1754, 'code': 0.1517, 'summary': 0.1384, 'chat': 0.1382, 'factual': 0.1093, 'logic': 0.1053, 'general': 0.0936, 'math': 0.088}
+     <think>  : Okay, so the store sells apples for $0.50 each and oranges for $0.75 each. If Sarah buys four of either item, how much does she spend in total? Let's start by figuring out how many apples and oranges are in the basket.
+
+Let's consider how many apples there are first. Say 4 apples at 0.50 cents per a
+     Answer   : 
+
+[21] word_problem | ❌ FAIL
+     Prompt       : A tank is 60% full with 300 liters of water. What is the total capacity of the tank?
+     Think tokens : 400  Rep=4.5%  Entropy=6.627
+     Answer tokens: 0  Rep=0.0%  Entropy=0.000
+     Found </think>: False  Gen time: 36.02s
+     Think kw score : 83.3%  Answer kw score: 0.0%
+     Arm routing  : {'misc': 0.1748, 'code': 0.1513, 'summary': 0.1445, 'chat': 0.1406, 'factual': 0.1088, 'logic': 0.1086, 'math': 0.0861, 'general': 0.0852}
+     <think>  : Okay, the user is asking how much water a tank can hold. I need to find an answer using math. Let me start by thinking about what a tank can hold. Maybe it's 60% full with 300 liters of water?
+
+Wait, if this question was asked as "What is the total capacity of the tank?" then maybe the user meant "W
+     Answer   : 
+
+========================================================================
+  END OF REPORT
+========================================================================

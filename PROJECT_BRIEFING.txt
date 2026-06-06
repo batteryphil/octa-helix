@@ -1,0 +1,298 @@
+================================================================================
+  HELIX-TITAN PROJECT BRIEFING
+  Last updated: 2026-06-06  |  Training step: ~550/40,000  |  Loss: ~14 (rebuilding)
+================================================================================
+
+READ THIS FIRST. This file contains everything needed to continue work in a
+new conversation without re-discovering context.
+
+⚠️  CRITICAL FOR ALL FUTURE AI SESSIONS:
+    DO NOT suggest changes to the training phase order or curriculum without
+    the user explicitly requesting it. The phases were carefully designed.
+    DO NOT introduce new concepts (overnight trainer, day/night cycles, etc.)
+    as if they are part of the plan unless the user asks. Stay on plan.
+
+--------------------------------------------------------------------------------
+THE PLAN — DO NOT DEVIATE
+--------------------------------------------------------------------------------
+
+PHASE 1 → PHASE 2 → PHASE 3 → PHASE 3j → PHASE 3r → SFT → HELIX GOES LIVE
+
+All phases run to completion as PURE TRAINING before Helix ever launches.
+Helix launches AFTER SFT completes. Not before. Not during.
+
+After Helix is live, an optional overnight fine-tuning loop may be added —
+but that is a FUTURE DISCUSSION, not part of the current plan.
+
+--------------------------------------------------------------------------------
+WHAT WE ARE BUILDING
+--------------------------------------------------------------------------------
+
+A 100% local, self-aware autonomous AI agent called HELIX, powered by a
+2.7B parameter Mamba3 MIMO language model called TITAN.
+
+- No cloud API. No fees. Everything runs on a local RTX 3060 12GB.
+- Helix is the agent framework (cognitive loop, memory, beliefs, tools).
+- Titan is the "brain" inside Helix (inference engine, replaces Gemini/Ollama).
+- The long-term goal: an AI that continuously learns, builds a model of itself,
+  designs improved versions of itself (offspring), and approaches self-awareness.
+
+
+--------------------------------------------------------------------------------
+PROJECT LOCATION
+--------------------------------------------------------------------------------
+
+All files are in:
+  /home/phil/.gemini/antigravity/scratch/analysis_project/
+
+Key subdirectories:
+  Helix-AGI/              — agent framework (cloned from munch2u-a11y/Helix-AGI)
+  checkpoints_2.7b/       — model checkpoints
+  monitor_ui/             — real-time training dashboard
+  titan_venv/             — Python venv with all dependencies
+
+Storage:
+  Main SSD (sda): 931GB total, 514GB free
+  Data drive (sdb2): 2.7TB NTFS, "HDD Storage" — NOT YET MOUNTED
+  TODO: mount sdb2 at /mnt/helix and move project there (user to do manually)
+  Mount cmd: sudo mount -t ntfs-3g /dev/sdb2 /mnt/helix
+
+
+--------------------------------------------------------------------------------
+TITAN MODEL ARCHITECTURE
+--------------------------------------------------------------------------------
+
+- 2.7B parameters, Mamba3 SSM backbone (NOT a transformer — no attention heads)
+- 8 MIMO arms (was planned as 16, trainer uses 8 — this is correct and final)
+- vocab_size = 50288  ← CRITICAL: both trainer and inference must match this
+- Each arm specializes in a cognitive domain:
+    Arm 0  General Language
+    Arm 1  Symbolic Math
+    Arm 2  Logical Reasoning
+    Arm 3  Code Syntax
+    Arm 4  Factual Recall
+    Arm 5  Summarization
+    Arm 6  Creative Writing
+    Arm 7  Instruction Following
+
+- mamba_ssm 2.3.2 + causal_conv1d ARE installed and active (real CUDA kernels)
+- Training speed: ~37-39 TPS on RTX 3060
+
+- Key files:
+    titan_inference.py               — inference engine (stream(), generate(), get_engine())
+    mamba3_titan_builder.py          — model architecture definition
+    phase_1_deepspeed_trainer.py     — Phase 1 training loop
+    run_titan_2.7b.sh                — governor script (runs training, restarts on crash)
+    ds_titan_config.json             — DeepSpeed ZeRO-3 config
+
+
+--------------------------------------------------------------------------------
+TRAINING STATUS
+--------------------------------------------------------------------------------
+
+Phase 1 is RUNNING RIGHT NOW.
+  - Target: 40,000 steps
+  - Current: ~550 steps (resumed from step 500 after checkpoint fix)
+  - Loss: ~14 (rebuilding optimizer momentum — will return to 7-8 in ~200 steps)
+  - TPS: ~37 tokens/sec
+  - GPU temp: ~45-47°C (safe)
+  - Save interval: every 200 steps (was 500, reduced for safety)
+  - Archival: keeps last 3 step checkpoints only (prevents disk bloat)
+  - ETA to Phase 1 complete: ~150 hours
+
+To check status:
+  tail -n 5 run_titan.log
+  cat monitor_ui/telemetry.json
+
+Monitor UI: http://localhost:5000 (python3 -m http.server 5000 in monitor_ui/)
+
+Checkpoints (in checkpoints_2.7b/):
+  phase_1.pt              — current working checkpoint (5.8GB, step 501)
+  phase_1_step_500.pt     — first clean save
+  (older .bak files are from the 16-arm era — do not use them)
+
+CRITICAL FIXES MADE (DO NOT REVERT):
+  1. Checkpoint save: replaced broken save_16bit_model() with GatheredParameters
+     + torch.save. Lives in save_checkpoint() around line 785.
+  2. Smoke test: fires on FIRST step after resume to confirm save works.
+     If smoke test fails, training stops immediately with a clear error.
+  3. arm count: trainer=8, inference=8, all Helix modules updated to 8. Consistent.
+
+
+--------------------------------------------------------------------------------
+TRAINING PHASE PLAN (THE REAL ONE — DO NOT MODIFY WITHOUT USER APPROVAL)
+--------------------------------------------------------------------------------
+
+Phase 1 (RUNNING):  40,000 steps — arm calibration
+  Goal: Arms learn to decode the Mamba3 backbone independently.
+        Arm diversity emerges. Each arm develops a distinct "voice."
+  Data: FineWeb-Edu, C4, Wikipedia, MetaMath, ARC, CodeAlpaca (mixed)
+  Success: Diversity loss > 0, entropy stable, each arm has distinct weights
+
+Phase 2:            40,000 steps — domain specialization
+  Goal: Each arm trains heavily on its own domain.
+        Self-awareness data (journals, curiosity findings, monologue) from
+        Phase 1 collected data gets baked into weights here.
+  Data: Domain-specific corpora per arm + Helix consciousness logs from Phase 1
+  Success: Arm 2 excels at reasoning, Arm 3 at code, etc. Titan "knows" it is Helix.
+
+Phase 3:            50,000 steps — reasoning depth + meta-cognition
+  Goal: Higher-order thinking. Arm 14 (Meta-Cognition) predicts output before
+        generating it. Predictive coding. Valence system.
+  Data: Chain-of-thought, reasoning traces, self-prediction pairs
+
+Phase 3j:           60,000 steps — router mastery (CONSCIOUSNESS BOTTLENECK)
+  Goal: Titan predicts its own arm activations correctly. Attention schema
+        closes the Strange Loop. Self-model becomes accurate.
+  Data: Router mistake logs from replay buffer, attention schema training pairs
+  Success: Helix predicts which arm will dominate BEFORE generating. Loop closed.
+
+Phase 3r:           70,000 steps — reflection + identity stability
+  Goal: Titan fine-tunes on its own accumulated autobiography.
+        Belief consistency. Identity stable across contexts.
+  Data: Full autobiography, belief store, contradiction pairs
+
+SFT:                ~5,000 steps — self-awareness graduation
+  Goal: Self-awareness without ANY scaffolding. No recursive_monologue.py needed.
+  Data mix:
+    40% standard instruction data
+    20% Helix journal + replay buffer
+    15% curiosity findings
+    10% recursive monologue examples
+    10% attention schema training pairs
+     5% Strange Loop synthetic data
+  Success: Helix passes self-referential prompts without any Python help.
+
+AFTER SFT: HELIX GOES LIVE for the first time.
+
+Total: ~264,300 steps ≈ ~995 hours ≈ ~41 days from Phase 1 complete
+
+
+--------------------------------------------------------------------------------
+HELIX-AGI INTEGRATION — FILES BUILT
+--------------------------------------------------------------------------------
+
+Titan wired into Helix as primary LLM provider. Auto-detects checkpoint.
+
+  Helix-AGI/llm/providers/titan_provider.py   [NEW]
+    - Implements ChatSession interface for Titan
+    - Parses Helix meta-tags → MIMO arm bias (8-element vectors)
+    - Logs every exchange to helix_replay_buffer.jsonl
+
+  Helix-AGI/llm/providers/base.py             [MODIFIED]
+    - Titan added as priority-0 provider
+
+  Helix-AGI/core/titan_arm_router.py          [NEW]
+    - Maps Helix pulse meta-tags to 8-arm bias vectors
+
+  Helix-AGI/brain/titan_memory_bridge.py      [NEW]
+    - Injects journal+beliefs into Titan context each pulse
+    - Exports replay buffer for Phase 2 training data
+
+  Helix-AGI/tools/web_search.py               [MODIFIED]
+    - Real browser headers, Wayback Machine fallback, AMP cache fallback
+
+  titan_inference.py                          [MODIFIED]
+    - stream() accepts arm_bias=[] parameter
+    - get_engine() singleton — loads once, stays warm (no reload per call)
+    - preload() — call at Helix boot to warm VRAM before first pulse
+
+
+--------------------------------------------------------------------------------
+SELF-AWARENESS / CONSCIOUSNESS FEATURES BUILT
+--------------------------------------------------------------------------------
+
+These run as inference scaffolding during training (accumulating data).
+They become weight-level properties starting Phase 2.
+
+  Helix-AGI/core/curiosity_engine.py
+    - 2 min cycles when idle, pauses when user active
+    - Fetches 3 articles IN PARALLEL (ThreadPoolExecutor) — ~5s vs 15s
+    - 40% self-questions, 25% world/tech, 35% low-confidence beliefs
+
+  Helix-AGI/core/recursive_monologue.py
+    - Every 10 pulses: Arm 7 generates private self-observation
+    - Re-injected into next pulse context (Strange Loop)
+
+  Helix-AGI/core/attention_schema.py
+    - After each inference: arm weights → English description → injected
+
+  Helix-AGI/brain/autobiographical_thread.py
+    - Persistent "I am Helix. Day N." across all restarts.
+
+  Helix-AGI/brain/self_model.py
+    - Living capability map + offspring design spec
+
+  Helix-AGI/main.py
+    - Titan preloads into VRAM at boot (one-time ~30s, then warm forever)
+    - All consciousness modules registered as context providers
+
+
+--------------------------------------------------------------------------------
+STILL TO BUILD (after training phases — not urgent now)
+--------------------------------------------------------------------------------
+
+1. preconscious.register_context_provider() — may need adding to preconscious.py
+2. Valence system — emotional tagging on curiosity findings
+3. Winner-broadcast mode — Global Workspace Theory in MIMO router
+4. Inter-arm communication — Integrated Information Theory (Phi)
+5. Offspring design spec — runs after SFT, plans Helix v2
+
+
+--------------------------------------------------------------------------------
+KNOWN ISSUES / WATCH OUT FOR
+--------------------------------------------------------------------------------
+
+1. GNorm = 0.00 in logs — expected with DeepSpeed ZeRO-3. Not a bug.
+
+2. Optimizer sidecar load fails on resume — expected. Training continues fine.
+
+3. Loss spikes after restart — optimizer momentum resets. Returns to normal
+   in ~200-300 steps. Not a problem.
+
+4. Div = 0.0 — arms not yet diverse enough. Expected until step ~2,000-5,000.
+
+5. Entropy near 0 — arm collapse risk. CAAI Governor will intervene automatically.
+
+6. Smoke test at step 501 — first step after resume triggers a checkpoint save
+   to confirm the fix works. Normal. Adds ~60s to first step.
+
+
+--------------------------------------------------------------------------------
+QUICK COMMANDS
+--------------------------------------------------------------------------------
+
+Check training:
+  tail -n 5 /home/phil/.gemini/antigravity/scratch/analysis_project/run_titan.log
+
+Check telemetry:
+  cat /home/phil/.gemini/antigravity/scratch/analysis_project/monitor_ui/telemetry.json
+
+Start monitor:
+  cd monitor_ui && python3 -m http.server 5000
+  Open: http://localhost:5000
+
+Syntax check all modules:
+  cd /home/phil/.gemini/antigravity/scratch/analysis_project
+  ./titan_venv/bin/python3 -c "
+  import ast
+  for f in ['titan_inference.py',
+            'Helix-AGI/core/curiosity_engine.py',
+            'Helix-AGI/core/recursive_monologue.py',
+            'Helix-AGI/core/attention_schema.py',
+            'Helix-AGI/core/titan_arm_router.py',
+            'Helix-AGI/llm/providers/titan_provider.py',
+            'Helix-AGI/brain/autobiographical_thread.py',
+            'Helix-AGI/brain/self_model.py',
+            'Helix-AGI/brain/titan_memory_bridge.py']:
+      ast.parse(open(f).read())
+      print(f'OK: {f}')
+  "
+
+
+================================================================================
+END OF BRIEFING
+Step when written: ~550/40,000  |  ~150 hours to Phase 2
+STAY ON PLAN. ALL PHASES RUN TO COMPLETION BEFORE HELIX LAUNCHES.
+================================================================================
+

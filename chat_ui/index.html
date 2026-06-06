@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN — MoE Reasoning Engine</title>
+    <meta name="description" content="Titan 2.54B MoE Reasoning Engine — 16-arm Mamba3 with deep think mode">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="brain-icon">🧠</div>
+                <div>
+                    <h2>TITAN</h2>
+                    <p class="subtitle">2.54B MoE · 16 Reasoning Arms</p>
+                </div>
+            </div>
+            <div class="divider"></div>
+
+            <!-- Mode toggle -->
+            <div class="mode-toggle">
+                <button id="btn-fast" class="mode-btn active" onclick="setMode('fast')">
+                    <span>⚡</span> Fast
+                </button>
+                <button id="btn-deep" class="mode-btn" onclick="setMode('deep')">
+                    <span>🧠</span> Deep Think
+                </button>
+            </div>
+            <div class="mode-desc" id="mode-desc">Single-pass generation. Fast and direct.</div>
+
+            <div class="divider"></div>
+            <div class="section-label">Active Arms <span id="arm-entropy-badge" class="entropy-badge"></span></div>
+            <div id="arm-bars" class="arm-bars">
+                <!-- JS populated -->
+            </div>
+
+            <div class="divider"></div>
+            <div class="section-label">Response Metrics</div>
+            <div class="metrics-grid">
+                <div class="metric-pill">
+                    <span class="metric-label">Entropy</span>
+                    <span class="metric-value" id="entropy-val">—</span>
+                </div>
+                <div class="metric-pill">
+                    <span class="metric-label">IPC Gate</span>
+                    <span class="metric-value" id="ipc-val">—</span>
+                </div>
+                <div class="metric-pill">
+                    <span class="metric-label">Top Arm</span>
+                    <span class="metric-value" id="top-arm-val">—</span>
+                </div>
+                <div class="metric-pill">
+                    <span class="metric-label">Status</span>
+                    <span class="metric-value accent" id="status-val">Loading...</span>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="section-label">Arm Legend <span style="font-size:0.6rem;color:var(--text-dim)">(self-organized)</span></div>
+            <div class="arm-legend" id="arm-legend"></div>
+        </aside>
+
+        <!-- Main chat -->
+        <main class="chat-main">
+            <header class="chat-header glass-panel">
+                <div class="header-left">
+                    <span class="pulse-dot" id="pulse-dot"></span>
+                    <span id="header-status">Connecting...</span>
+                </div>
+                <div class="header-right">
+                    <label class="toggle-label" id="think-vis-toggle" style="display:none">
+                        <input type="checkbox" id="show-thinking" checked onchange="toggleThinkingVisibility()">
+                        Show thinking
+                    </label>
+                    <button class="btn-ghost" onclick="clearChat()">Clear</button>
+                </div>
+            </header>
+
+            <div class="messages" id="messages">
+                <div class="message system-msg">
+                    <div class="message-content">
+                        <p>🧠 <strong>Titan MoE Reasoning Engine</strong></p>
+                        <p>Use <strong>⚡ Fast</strong> for quick answers. Use <strong>🧠 Deep Think</strong> to see how each reasoning arm approaches your question before synthesizing a final response.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area glass-panel">
+                <textarea id="user-input" placeholder="Ask Titan anything..." rows="3"
+                          onkeydown="handleKey(event)"></textarea>
+                <div class="input-controls">
+                    <div class="param-group">
+                        <label>Temp
+                            <input type="range" id="temp-slider" min="0.1" max="1.5" step="0.05" value="0.72"
+                                   oninput="document.getElementById('temp-val').textContent=this.value">
+                        </label>
+                        <span id="temp-val">0.72</span>
+                    </div>
+                    <div class="param-group">
+                        <label>Top-p
+                            <input type="range" id="topp-slider" min="0.5" max="1.0" step="0.01" value="0.92"
+                                   oninput="document.getElementById('topp-val').textContent=this.value">
+                        </label>
+                        <span id="topp-val">0.92</span>
+                    </div>
+                    <button id="send-btn" class="btn-send" onclick="sendMessage()">
+                        <span id="send-icon">⚡</span> <span id="send-label">Send</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

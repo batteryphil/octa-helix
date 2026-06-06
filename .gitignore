@@ -1,0 +1,89 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── Virtual environment ────────────────────────────────────────────────────────
+titan_venv/
+venv/
+env/
+.env
+
+# ── Model checkpoints (too large for git — use HuggingFace Hub) ───────────────
+checkpoints_2.7b/
+*.pt
+*.safetensors
+*.bin
+*.ckpt
+*.pth
+
+# ── Training logs (large, in training_logs/ instead) ──────────────────────────
+run_titan.log
+training_log.txt
+night_shift*.log
+benchmark.log
+phase_sft*.log
+phase_3r_training.log
+benchmarks_output.log
+generate_final.log
+logit_bias.log
+monitor_server.log
+*.log
+
+# ── Sensitive / credentials ────────────────────────────────────────────────────
+.env
+credentials.env
+*.key
+secrets.*
+
+# ── Large binary / data files ─────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.gz
+*.npz
+mamba2backbonerecursion-main/
+thalamic-bloom-main/
+thalamic-bloom-push/
+legacy_1.4b_project/
+
+# ── Dataset cache (HuggingFace streams these — no need to commit) ─────────────
+~/.cache/huggingface/
+datasets_cache/
+*.arrow
+*.parquet
+
+# ── Misc scratch ──────────────────────────────────────────────────────────────
+trainer.pid
+*.tmp
+*.bak
+*.swap
+.DS_Store
+Thumbs.db
+*.png
+*.jpg
+debug_out.txt
+check.txt
+dissection_output.txt
+server_log.txt
+eval_log.txt
+history_builder.log
+monitor_ui/history.json
+monitor_ui/server.log
+helix_replay_buffer.jsonl
+helix_finetune_batch.jsonl
+/tmp/
+Titan_3j_*.ipynb
+
+# Files that previously contained secrets - keep local only
+Titan_3j_Colab.ipynb
+Titan_3j_Training.ipynb
+run_benchmarks.sh
+sft_titan_trainer.py
+upload_to_hf.py

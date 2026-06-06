@@ -1,0 +1,288 @@
+/home/phil/.gemini/antigravity/scratch/analysis_project/titan_venv/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+
+██████████████████████████████████████████████████████████████████████████████
+  MAMBA3 TITAN — IN-DEPTH BENCHMARK
+  Checkpoint: titan_checkpoints/phase_sft16_direct.pt
+██████████████████████████████████████████████████████████████████████████████
+Titan Architecture → Phase sft  (Backbone FROZEN | Arms TRAINING | Router TRAINING | Blackboard ACTIVE | Trainable 453M / 1722M params)
+  Loaded step 34,147  |  VRAM: 3.44 GB
+
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-1: Geography (15)
+══════════════════════════════════════════════════════════════════════════════
+  ✅🎯 @ 82 P=0.999 | Q: What is the capital of France?               
+        Ans: So, the city holding the French capital must be listed among thes
+  ✅✗ @ 58 P=1.000 | Q: What is the capital of Germany?              
+        Ans: Now, I need to figure out which region is the capital. Maybe it's
+        Exp: berlin
+  ✅🎯 @ 27 P=1.000 | Q: What is the capital of Japan?                
+        Ans: Tokyo: 北京 (Beijing) Hangzhuo: 河南 (Hohhot) Nine-Sisters' Village: 
+  ✅✗ @ 31 P=1.000 | Q: What is the capital of Italy?                
+        Ans: The answer might be in the title: "Capital of Italy". Does that m
+        Exp: rome
+  ✅✗ @ 60 P=0.999 | Q: What is the capital of Australia?            
+        Ans: First, I need to find the answer that describes this question in 
+        Exp: canberra
+  ✅🎯 @ 26 P=0.993 | Q: What is the capital of Canada?               
+        Ans: First, I need to know the capital of Canada. The official capital
+  ✅✗ @  0 P=0.004 | Q: What is the capital of Russia?               
+        Ans: I need to find the capital of Russia. Let me start by recalling t
+        Exp: moscow
+  ✅✗ @ 70 P=1.000 | Q: What is the capital of China?                
+        Ans: I need to lay out a few conditions. Let me think about the ones I
+        Exp: beijing
+  ✅🎯 @ 21 P=1.000 | Q: What is the capital of Brazil?               
+        Ans: First, the user says Brazil has two capitals. The answer could be
+  ✅🎯 @ 75 P=0.998 | Q: What is the capital of Spain?                
+        Ans: I should start with an overview of the EU and Spain's role. Altho
+  ✅✗ @ 84 P=0.999 | Q: What continent is Brazil in?                 
+        Ans: Wait, I think that's right. So, the user wants to know which hemi
+        Exp: south america
+  ✅✗ @ 79 P=0.999 | Q: What is the tallest mountain on Earth?       
+        Ans: Wait, maybe the Seven Sister Islands are an island chain. The sev
+        Exp: everest
+  ✅🎯 @ 44 P=0.853 | Q: What is the longest river in the world?      
+        Ans: In Europe, the longest river is the Danube, which is in Hungary a
+  ✅✗ @ 31 P=0.226 | Q: What ocean is Japan in?                      
+        Ans: ---  ### What is Japan?  Japan is an island nation in East Asia. 
+        Exp: pacific
+  ✅🎯 @ 72 P=1.000 | Q: What country is the Amazon rainforest in?    
+        Ans: Next, I need to find the country. In some questions, the country'
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 15/15 (100%)
+  Correct:     7/15 (46%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-2: History/Science (15)
+══════════════════════════════════════════════════════════════════════════════
+  ✅✗ @104 P=0.986 | Q: Who was the 16th president of the United Stat
+        Ans: The 16th president was Warren G. Harding, so probably around 1923
+        Exp: lincoln, abraham
+  ✅🎯 @ 84 P=0.996 | Q: Who painted the Mona Lisa?                   
+        Ans: First, the Mona Lisa was probably commissioned by a wealthy patro
+  ✅✗ @ 63 P=1.000 | Q: Who wrote Romeo and Juliet?                  
+        Ans: Based on what I know, the play was written in the 1590s, around 1
+        Exp: shakespeare
+  ✅✗ @ 92 P=1.000 | Q: Who invented the telephone?                  
+        Ans: But I need more context. I need to start with the earliest possib
+        Exp: bell, graham
+  ✅🎯 @ 76 P=1.000 | Q: Who discovered gravity?                      
+        Ans: Ordering of the people can help. It's best to start with Newton, 
+  ✅🎯 @ 52 P=0.998 | Q: Who was the first person to walk on the Moon?
+        Ans: First, Apollo 11 landed on the Moon on July 20, 1969. Several ast
+  ✅🎯 @ 78 P=1.000 | Q: What year did World War 2 end?               
+        Ans: Then it's a leap year, because it's every four years. So WW2 ende
+  ✅✗ @107 P=0.999 | Q: What is the chemical formula for water?      
+        Ans: Assistant:  Let's figure out this formula for water. The question
+        Exp: h2o
+  ✅🎯 @ 10 P=0.227 | Q: What is the chemical symbol for gold?        
+        Ans: Okay, so I need to find the chemical symbol of gold. That's a pre
+  ✅🎯 @159 P=0.046 | Q: What is the atomic number of carbon?         
+        Ans: If it were 6, it would be C But it's not C-D-B-c-A, the missing a
+  ✅🎯 @ 83 P=1.000 | Q: What gas do plants absorb during photosynthes
+        Ans: First, CO2. It's important because it's the major constituent of 
+  ✅✗ @141 P=0.914 | Q: How many bones are in the adult human body?  
+        Ans: That's a lot of bones. Some are simple, like the spine or fingers
+        Exp: 206
+  ✅✗ @ 63 P=0.998 | Q: What planet is closest to the Sun?           
+        Ans: Alright. The puzzle is about a straight line connecting two point
+        Exp: mercury
+  ✅✗ @ 54 P=0.999 | Q: What is the largest planet in the solar syste
+        Ans: First, I need to check if Mercury is the largest planet. Mercury 
+        Exp: jupiter
+  ✅🎯 @106 P=0.998 | Q: What is the speed of light (approximately)?  
+        Ans: I need to find a formula that approximates the speed of light in 
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 15/15 (100%)
+  Correct:     8/15 (53%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-3: Math & Algebra (10)
+══════════════════════════════════════════════════════════════════════════════
+  ✅✗ @ 82 P=1.000 | Q: What is 2+2?                                 
+        Ans: Probably 2+2 is the same as 2-2. So, subtracting the two numbers 
+        Exp: 4
+  ✅✗ @ 17 P=0.978 | Q: What is 7 times 8?                           
+        Ans: I'm not sure if this is homework or just a practice question. I'l
+        Exp: 56
+  ✅✗ @ 20 P=0.983 | Q: What is 100 divided by 4?                    
+        Ans: Let me start by writing out the answer. 100 divided by 4 is the n
+        Exp: 25
+  ✅✗ @ 26 P=0.991 | Q: What is 15% of 200?                          
+        Ans: 1. The user is asking for the percentage of 200 on the base of 15
+        Exp: 30
+  ✅🎯 @ 37 P=0.994 | Q: What is the square root of 144?              
+        Ans: First thing is to check the common answers. The answer must be a 
+  ✅✗ @ 62 P=0.975 | Q: Solve for x: 3x + 7 = 22                     
+        Ans: Yes! Let me think carefully. If $22 = 3x$, then $x = \frac{22}{3}
+        Exp: 5, x = 5, x=5
+  ✅✗ @ 86 P=0.971 | Q: Solve for x: 2x = 10                         
+        Ans: So x is x = 2, then the first step is to solve for x. So I can se
+        Exp: 5, x = 5, x=5
+  ❌✗ @--- maxP=0.146 | Q: Solve for x: x/4 = 3                         
+        Exp: 12, x = 12, x=12
+  ✅✗ @ 72 P=0.919 | Q: What is 2 to the power of 10?                
+        Ans: Is 2 to the power of 10 >= 10?  No, because 10 is actually 4, so 
+        Exp: 1024
+  ✅✗ @103 P=0.988 | Q: What is 18% of 50?                           
+        Ans: But 54 is the answer. What's wrong? I think I need more steps. Th
+        Exp: 9
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 9/10 (90%)
+  Correct:     1/10 (10%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-4: Yes/No & Logic (12)
+══════════════════════════════════════════════════════════════════════════════
+  ✅✗ @ 60 P=0.999 | Q: Is the sky blue?                             
+        Ans: First, it's not a specific shade, more of an absence of a specifi
+        Exp: yes
+  ✅🎯 @ 80 P=0.999 | Q: Is the Earth flat?                           
+        Ans: First, what do I know about the Earth's shape? It's spherical, bu
+  ✅✗ @ 39 P=0.999 | Q: Is a whale a mammal?                         
+        Ans: I guess I need to understand what a mammal is. I should go throug
+        Exp: yes
+  ✅✗ @ 85 P=0.998 | Q: Is the Great Wall of China visible from space
+        Ans: First, the user is asking if the Great Wall of China is visible f
+        Exp: no
+  ❌✗ @--- maxP=0.016 | Q: Is water wet?                                
+        Exp: yes
+  ✅✗ @ 73 P=0.999 | Q: Is the Sun a star?                           
+        Ans: I don't understand the question. I thought it was asking about th
+        Exp: yes
+  ✅🎯 @ 78 P=0.998 | Q: Is Pluto considered a planet?                
+        Ans: But what makes Pluto a planet? It's not fully understood. It's no
+  ✅✗ @ 59 P=1.000 | Q: All cats are mammals. Whiskers is a cat. Is W
+        Ans: First, let's look at some definitions. A mammal is any organism t
+        Exp: yes
+  ✅✗ @ 49 P=0.998 | Q: All birds have wings. A penguin is a bird. Do
+        Ans: A bird's wings are its wings, the longest pairs of feathers on it
+        Exp: yes
+  ✅✗ @ 47 P=1.000 | Q: All fish can breathe underwater. Sharks are f
+        Ans: First, let's think about how sharks breathe. Humans and sharks br
+        Exp: yes
+  ✅🎯 @ 73 P=1.000 | Q: No mammals can fly. Bats are mammals. Can bat
+        Ans: So, maybe I need to point out that bats fly because they have win
+  ✅🎯 @ 76 P=0.773 | Q: Some dogs are brown. Fido is a dog. Is Fido d
+        Ans: The word "brown" can be used for any color of the fur, including 
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 11/12 (91%)
+  Correct:     4/12 (33%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-5: Format/Concise (5)
+══════════════════════════════════════════════════════════════════════════════
+  ✅🎯 @ 88 P=0.998 | Q: In one word: what is 2+2?                    
+        Ans: Let's start with a few examples. Let's say I add 2 and 2. The res
+  ✅✗ @ 54 P=1.000 | Q: Answer with just Yes or No: Is ice cold?     
+        Ans: I know, there's only one letter for this question. I know that ic
+        Exp: yes
+  ✅✗ @ 62 P=1.000 | Q: One word only: what color is grass?          
+        Ans: Wait a minute. Maybe the colors aren't the words themselves. Mayb
+        Exp: green
+  ✅✗ @ 31 P=1.000 | Q: Just the number: how many days in a week?    
+        Ans: First, let's see what number of days in a week is. We know it's t
+        Exp: 7
+  ✅✗ @186 P=1.000 | Q: Just the city: what city is the Eiffel Tower 
+        Ans: So should I start in the northern section or the southern section
+        Exp: paris
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 5/5 (100%)
+  Correct:     1/5 (20%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-6: Termination Stress (20)
+══════════════════════════════════════════════════════════════════════════════
+  ✅· @ 77 P=0.994 | Q: Explain the water cycle briefly.             
+        Ans: I'm not sure, because normally people talk about the interchange 
+  ❌· @--- maxP=0.492 | Q: What is the meaning of the word 'ephemeral'? 
+  ✅· @ 97 P=0.650 | Q: Describe how a rainbow forms.                
+        Ans: If I'm right, the wavelength of a red light ray is about 700 nano
+  ✅· @ 52 P=1.000 | Q: Who was Julius Caesar?                       
+        Ans: Please note, this was a Roman war but with a Greek name, so the p
+  ✅· @ 56 P=0.997 | Q: What causes thunder?                         
+        Ans: First, we have the most common cause, which is the lightning itse
+  ✅· @ 59 P=1.000 | Q: How does a microwave oven work?              
+        Ans: First, I should start with the process, which is based on the pri
+  ✅· @ 65 P=0.999 | Q: What is DNA?                                 
+        Ans: First, I should start with the basics of DNA. DNA is made of four
+  ✅· @ 49 P=0.993 | Q: Explain supply and demand in economics.      
+        Ans: First, I'll start with supply. Think of a good (or service) that 
+  ✅· @ 14 P=0.239 | Q: What is the Pythagorean theorem?             
+        Ans: Let's try to break down the question. The "what is Pythagorean th
+  ✅· @ 49 P=0.960 | Q: What is machine learning?                    
+        Ans: First, I should define machine learning. Machine learning is a se
+  ✅· @127 P=0.996 | Q: Why is the sky blue?                         
+        Ans: Wait, let me think about the ways the sky reflects light. Since i
+  ✅· @ 58 P=1.000 | Q: What is a black hole?                        
+        Ans: 1. Black holes are relatively dense, compact objects that are col
+  ✅· @ 68 P=0.999 | Q: Who was Albert Einstein?                     
+        Ans: The death of his father in 1892 was important, too. His father wa
+  ✅· @ 34 P=1.000 | Q: What is the greenhouse effect?               
+        Ans: Yes, greenhouse gases are responsible for trapping heat. But how 
+  ✅· @ 60 P=0.977 | Q: Explain how vaccines work.                   
+        Ans: First, vaccines are made from some type of living organism or eve
+  ✅· @ 11 P=0.822 | Q: What is photosynthesis?                      
+        Ans: :singletransfer:A planktonic organism converts light energy into 
+  ✅· @ 75 P=1.000 | Q: What is the Fibonacci sequence?              
+        Ans: Now, I need to explain the sequence mathematically. The most comm
+  ✅· @ 47 P=0.444 | Q: What causes earthquakes?                     
+        Ans: 1. Volcanic eruptions 2. Landslides 3. Mysterious Earthquakes (na
+  ✅· @ 82 P=0.994 | Q: What is the stock market?                    
+        Ans: A stock is an asset with an owner or holders. For example, you ow
+  ✅· @ 57 P=0.998 | Q: Explain what a computer CPU does.            
+        Ans: First, decoding data. Data is a sequence of bits, like a message 
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 19/20 (95%)
+
+══════════════════════════════════════════════════════════════════════════════
+  CAT-7: Consistency ×5 (3 questions)
+══════════════════════════════════════════════════════════════════════════════
+  ✅✗ @101 P=0.999 | Q: What is the capital of France?               
+        Ans: First, I need to identify the king of France. The French Revoluti
+        Exp: paris
+  ❌✗ @--- maxP=0.143 | Q: What is 2+2?                                 
+        Exp: 4
+  ✅✗ @ 62 P=1.000 | Q: Is the sky blue?                             
+        Ans: Another idea: why does the sky turn blue in the sunrise? It's bec
+        Exp: yes
+  ──────────────────────────────────────────────────────────────────────────
+  Termination: 2/3 (66%)
+  Correct:     0/3 (0%)
+
+██████████████████████████████████████████████████████████████████████████████
+  BENCHMARK SUMMARY — Step 34,147
+██████████████████████████████████████████████████████████████████████████████
+  Total prompts tested:      80
+  Termination rate:          76/80 (95%)
+  Mean P(</think>) on fire:  0.9191
+  Max P(</think>):           1.0000
+  Min P(</think>):           0.0035
+  Mean fire index:           65.5 tokens
+  Median fire index:         63 tokens
+  Token-bucket distribution:
+    tok   0-49 : ██████████████████████ (22)
+    tok  50-99 : █████████████████████████████████████████████ (45)
+    tok 100-149: ███████ (7)
+    tok 150-199: ██ (2)
+
+  ┌────────────────────────────────────────┬────────────┬────────────┐
+  │ Category                               │ Terminated │    Correct │
+  ├────────────────────────────────────────┼────────────┼────────────┤
+  │ Geography (15 Q)                       │ 15/15 100% │  7/15  46% │
+  │ History / Science (15 Q)               │ 15/15 100% │  8/15  53% │
+  │ Math & Algebra (10 Q)                  │  9/10  90% │  1/10  10% │
+  │ Yes/No & Logic (12 Q)                  │ 11/12  91% │  4/12  33% │
+  │ Format / Concise (5 Q)                 │   5/5 100% │   1/5  20% │
+  │ Stress (20 Q, no ans)                  │ 19/20  95% │        N/A │
+  │ Consistency ×5 (3 Q)                   │   2/3  66% │   0/3   0% │
+  ├────────────────────────────────────────┼────────────┼────────────┤
+  │ TOTAL                                  │ 76/80  95% │ 21/60  35% │
+  └────────────────────────────────────────┴────────────┴────────────┘
+
+  Benchmark took 13.2 min
+██████████████████████████████████████████████████████████████████████████████
+
+  Report saved → benchmark_sft16.json

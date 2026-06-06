@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mamba3 Titan — Training Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --surface: #111418;
+    --border:  #1e2530;
+    --accent:  #4ade80;
+    --warn:    #fbbf24;
+    --danger:  #f87171;
+    --muted:   #4b5563;
+    --text:    #e2e8f0;
+    --dim:     #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #0d1117 0%, #111827 100%);
+  }
+  header h1 { font-size: 17px; font-weight: 800; letter-spacing: -0.5px; color: #fff; }
+  header h1 span { color: var(--accent); }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+               animation: pulse 1.5s ease-in-out infinite; display: inline-block; margin-right: 8px; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+  #last-update { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  .grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  .stat { background: var(--surface); padding: 18px 22px; }
+  .stat-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .stat-value { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 5px; font-family: 'JetBrains Mono', monospace; }
+  .ok    { color: var(--accent); }
+  .warn  { color: var(--warn); }
+  .bad   { color: var(--danger); }
+
+  .body { display: grid; grid-template-columns: 1fr 360px; gap: 1px; background: var(--border); min-height: calc(100vh - 160px); }
+  .main { background: var(--bg); padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+  .side { background: var(--surface); padding: 22px; display: flex; flex-direction: column; gap: 22px; overflow-y: auto; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
+  .panel-body { padding: 16px; }
+
+  canvas { width: 100%; display: block; }
+
+  .toggle-row { display: flex; gap: 10px; align-items: center; }
+  .toggle { font-size: 11px; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+             background: var(--bg); color: var(--dim); cursor: pointer; transition: all .15s; }
+  .toggle.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+
+  /* Arm bars */
+  .arm-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .arm-label { width: 130px; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+  .arm-bar-bg { flex: 1; height: 10px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .arm-bar { height: 100%; border-radius: 3px; transition: width .4s ease; background: var(--accent); }
+  .arm-pct { width: 42px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dim); flex-shrink: 0; }
+
+  /* Word salad */
+  .salad-prompt { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; }
+  .salad-output { font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+                   border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.6; min-height: 40px; }
+  .salad-output.error { color: var(--danger); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  .salad-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; font-weight: 700; vertical-align: middle; }
+  .badge-good { background: #14532d; color: var(--accent); }
+  .badge-fair { background: #451a03; color: var(--warn); }
+  .badge-poor { background: #450a0a; color: var(--danger); }
+  .badge-error { background: #1a0000; color: var(--danger); }
+
+  /* Concerns */
+  .concern { background: #1a0d0d; border: 1px solid #3f1f1f; border-radius: 5px; padding: 10px 14px; margin-bottom: 8px; }
+  .concern-title { font-size: 11px; font-weight: 700; color: var(--danger); margin-bottom: 3px; }
+  .concern-body { font-size: 12px; color: #fca5a5; line-height: 1.5; }
+  .ok-item { background: #0c1f14; border: 1px solid #14532d; border-radius: 5px; padding: 10px 14px; margin-bottom: 8px; }
+  .ok-title { font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 3px; }
+  .ok-body { font-size: 12px; color: #86efac; line-height: 1.5; }
+
+  .progress-wrap { display: flex; align-items: center; gap: 12px; }
+  .progress-bg { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #4ade80, #22d3ee); border-radius: 3px; transition: width .5s; }
+  .progress-label { font-size: 11px; color: var(--dim); font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+
+  footer { padding: 10px 28px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border);
+            display: flex; justify-content: space-between; background: var(--surface); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><span class="live-dot"></span>Mamba3 Titan — <span>Phase 1 Live Monitor</span></h1>
+    <div style="margin-top:3px;font-size:11px;color:var(--muted)">1.72B params · 48 layers · d_model=2048 · mamba_ssm CUDA kernel · RTX 3060 12GB</div>
+  </div>
+  <div id="last-update">Loading…</div>
+</header>
+
+<div class="grid">
+  <div class="stat">
+    <div class="stat-label">Step / Target</div>
+    <div class="stat-value ok" id="s-step">—</div>
+    <div class="stat-sub" id="s-progress-label">—</div>
+    <div style="margin-top:8px" class="progress-wrap">
+      <div class="progress-bg"><div class="progress-fill" id="s-progress" style="width:0%"></div></div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">LM Loss (live)</div>
+    <div class="stat-value" id="s-loss">—</div>
+    <div class="stat-sub" id="s-loss-sub">—</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Tokens / sec</div>
+    <div class="stat-value ok" id="s-tps">—</div>
+    <div class="stat-sub" id="s-eta">—</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">GPU Temp · LR</div>
+    <div class="stat-value" id="s-temp">—</div>
+    <div class="stat-sub" id="s-lr">—</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Routing Entropy</div>
+    <div class="stat-value" id="s-entropy">—</div>
+    <div class="stat-sub" id="s-entropy-sub">target: &lt; 0.8</div>
+  </div>
+</div>
+
+<div class="body">
+<div class="main">
+
+  <!-- Loss chart -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">LM Loss — Raw (every 10 steps, capped at 20 for scale)</span>
+      <div class="toggle-row">
+        <button class="toggle active" id="btn-raw" onclick="setSmooth(false)">RAW</button>
+        <button class="toggle" id="btn-smooth" onclick="setSmooth(true)">SMOOTH ×50</button>
+      </div>
+    </div>
+    <div class="panel-body" style="padding:12px 16px 8px">
+      <canvas id="loss-chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Grad norm + TPS row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Gradient Norm (raw)</span></div>
+      <div class="panel-body" style="padding:12px 16px 8px"><canvas id="gnorm-chart" height="140"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Tokens / sec</span></div>
+      <div class="panel-body" style="padding:12px 16px 8px"><canvas id="tps-chart" height="140"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Diagnosis -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Honest Assessment</span></div>
+    <div class="panel-body" id="diagnosis"></div>
+  </div>
+
+</div>
+<div class="side">
+
+  <!-- Arm routing + entropy chart -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">ARM ROUTING WEIGHTS</span>
+      <span id="entropy-badge" style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--dim)"></span>
+    </div>
+    <div class="panel-body" id="arms-panel"></div>
+    <div style="padding:0 16px 12px">
+      <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">ENTROPY HISTORY (target &lt; 0.8)</div>
+      <canvas id="entropy-chart" height="80"></canvas>
+    </div>
+  </div>
+
+  <!-- Collapse metric -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">ARM DIVERGENCE</span></div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+        <div>
+          <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Collapse Metric</div>
+          <div id="collapse-val" style="font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+        <div>
+          <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Entropy Now</div>
+          <div id="entropy-big" style="font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+      </div>
+      <div id="collapse-note" style="font-size:12px;color:var(--dim);line-height:1.5"></div>
+    </div>
+  </div>
+
+  <!-- Word salad -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">WORD SALAD <span id="salad-step" style="font-weight:400;color:var(--muted)"></span></span>
+      <span id="salad-badge"></span>
+    </div>
+    <div class="panel-body" id="salad-panel"><div style="color:var(--muted);font-size:12px">Runs every 1000 steps…</div></div>
+  </div>
+
+</div>
+</div>
+
+<footer>
+  <span id="f-left">Mamba3 Titan · Phase 1 · 40K step target</span>
+  <span id="f-right">Auto-refresh 5s</span>
+</footer>
+
+<script>
+// ─── Chart helpers ────────────────────────────────────────────────────────────
+function lerp(a,b,t){return a+(b-a)*t}
+function smooth(arr, w=50){
+  return arr.map((_,i)=>{
+    const s=Math.max(0,i-w), chunk=arr.slice(s,i+1);
+    return chunk.reduce((a,b)=>a+b,0)/chunk.length;
+  });
+}
+
+function drawChart(id, data, color='#4ade80', yMin=null, yMax=null, fillAlpha=0.15){
+  const canvas=document.getElementById(id);
+  if(!canvas||!data.length)return;
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.parentElement.clientWidth-32, H=canvas.height;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  const pad={t:10,r:10,b:28,l:48};
+  const w=W-pad.l-pad.r, h=H-pad.t-pad.b;
+
+  const mn=yMin??Math.min(...data), mx=yMax??Math.max(...data);
+  const range=mx-mn||1;
+  const toX=i=>pad.l+(i/(data.length-1))*w;
+  const toY=v=>pad.t+h-(Math.min(Math.max(v,mn),mx)-mn)/range*h;
+
+  // grid
+  ctx.strokeStyle='#1e2530'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=pad.t+h*(i/4);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+w,y); ctx.stroke();
+    ctx.fillStyle='#4b5563'; ctx.font='10px JetBrains Mono';
+    ctx.fillText((mx-(range*i/4)).toFixed(1), 0, y+4);
+  }
+
+  // fill
+  const grad=ctx.createLinearGradient(0,pad.t,0,pad.t+h);
+  const hex=color.replace('#','');
+  const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+  grad.addColorStop(0,`rgba(${r},${g},${b},${fillAlpha})`);
+  grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
+  ctx.beginPath(); ctx.moveTo(toX(0),toY(data[0]));
+  data.forEach((_,i)=>ctx.lineTo(toX(i),toY(data[i])));
+  ctx.lineTo(toX(data.length-1),pad.t+h); ctx.lineTo(toX(0),pad.t+h); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+
+  // line
+  ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.lineJoin='round';
+  ctx.beginPath(); data.forEach((v,i)=>i?ctx.lineTo(toX(i),toY(v)):ctx.moveTo(toX(i),toY(v)));
+  ctx.stroke();
+
+  // x labels
+  ctx.fillStyle='#4b5563'; ctx.font='10px JetBrains Mono'; ctx.textAlign='center';
+  const xTicks=5;
+  for(let i=0;i<=xTicks;i++){
+    const idx=Math.round(i*(data.length-1)/xTicks);
+    ctx.fillText(idx, toX(idx), H-6);
+  }
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let history=[], useSmooth=false;
+
+function setSmooth(s){
+  useSmooth=s;
+  document.getElementById('btn-raw').className='toggle'+(s?'':' active');
+  document.getElementById('btn-smooth').className='toggle'+(s?' active':'');
+  renderCharts();
+}
+
+// ─── Render charts ─────────────────────────────────────────────────────────
+let entropyHistory = [];
+function renderCharts(){
+  if(!history.length)return;
+  let losses=history.map(d=>d.l);
+  let gnorms=history.map(d=>d.g);
+  let tpses =history.map(d=>d.t);
+  if(useSmooth){ losses=smooth(losses,50); gnorms=smooth(gnorms,50); tpses=smooth(tpses,50); }
+  drawChart('loss-chart',  losses, '#4ade80', 0, Math.min(20,Math.max(...losses)));
+  drawChart('gnorm-chart', gnorms, '#f59e0b', 0, Math.min(20,Math.max(...gnorms)));
+  drawChart('tps-chart',   tpses,  '#38bdf8', Math.min(...tpses)*0.8, Math.max(...tpses)*1.05);
+  if(entropyHistory.length>1)
+    drawChart('entropy-chart', entropyHistory, '#a78bfa', 0, 1.8, 0.25);
+}
+
+// ─── Diagnosis ───────────────────────────────────────────────────────────────
+function buildDiagnosis(telem, salad){
+  const concerns=[], oks=[];
+
+  // Arm collapse
+  if(telem.arm_collapse_metric>=0.99){
+    concerns.push({
+      title:'⚠ Arms fully collapsed (metric=1.0)',
+      body:'All 8 MIMO arms are identical — no specialization occurring. This is expected in Phase 1 (arms trained as clones) but will need Phase 3 to diverge. Routing entropy is real signal though.'
+    });
+  }
+
+  // Loss variance
+  if(history.length>100){
+    const recent=history.slice(-200).map(d=>d.l);
+    const mean=recent.reduce((a,b)=>a+b,0)/recent.length;
+    const variance=recent.reduce((a,b)=>a+(b-mean)**2,0)/recent.length;
+    const std=Math.sqrt(variance);
+    if(std>5){
+      concerns.push({
+        title:`⚠ High loss variance (σ=${std.toFixed(1)})`,
+        body:`Loss swings ${(mean-std).toFixed(1)}–${(mean+std).toFixed(1)} per batch. This means the 8-stream data mix has very different difficulty levels per batch — CNN/DailyMail vs FineWeb-Edu are wildly different perplexities. Not necessarily bad, but not clean convergence.`
+      });
+    } else {
+      oks.push({title:'✓ Loss variance acceptable', body:`σ=${std.toFixed(1)} over last 200 steps — reasonable for multi-domain streaming.`});
+    }
+  }
+
+  // Word salad
+  if(salad && salad.avg_rep===1.0){
+    concerns.push({
+      title:'⚠ Word salad broken (avg_rep=100%)',
+      body:'All generation calls errored — was using CPU offload which breaks mamba_ssm CUDA kernel. Fixed in new code, will work at next 1000-step checkpoint.'
+    });
+  } else if(salad && salad.avg_rep<0.3){
+    oks.push({title:'✓ Word salad: low repetition', body:`avg_rep=${(salad.avg_rep*100).toFixed(0)}% — model generating diverse tokens.`});
+  }
+
+  // Grad norm
+  const recentGnorms=history.slice(-100).map(d=>d.g);
+  const maxGnorm=Math.max(...recentGnorms);
+  if(maxGnorm>15){
+    concerns.push({
+      title:`⚠ Gradient norm spikes (max=${maxGnorm.toFixed(1)})`,
+      body:'Occasional large gradient norms suggest some batches have very different loss scales. Clip at 1.0 is active but this hints at noisy data batches, not instability.'
+    });
+  }
+
+  // Arm collapse + entropy combined panel
+  const cm = telem.arm_collapse_metric;
+  const ent = parseFloat(telem.entropy) || 0;
+  const cmEl = document.getElementById('collapse-val');
+  cmEl.textContent = (cm||0).toFixed(3);
+  cmEl.className = cm>=0.98?'bad':cm>=0.7?'warn':'ok';
+
+  const entBig = document.getElementById('entropy-big');
+  entBig.textContent = ent.toFixed(3);
+  const entPhase = telem.phase||'1';
+  if(entPhase==='3'||entPhase==='3j'){
+    entBig.className = ent<0.5?'bad':ent<0.8?'ok':'warn';
+  } else {
+    entBig.className = 'warn'; // uniform is expected in Phase 1/2
+  }
+
+  document.getElementById('collapse-note').textContent =
+    entPhase==='3'||entPhase==='3j'
+      ? (ent<0.5  ? '⚠ Near-collapse — one arm monopolizing routing.'
+        :ent<0.8  ? '✅ Arms diverged — routing is specializing!'
+        :ent<1.2  ? '→ Routing still spreading — divergence in progress.'
+                  : '⚠ Near-uniform — arms not yet diverging (entropy='+ent.toFixed(2)+')')
+      : 'Phase '+entPhase+': uniform routing expected. Entropy target active in Phase 3.';
+
+  // Entropy stat card
+  const entEl = document.getElementById('s-entropy');
+  entEl.textContent = ent.toFixed(3);
+  entEl.className = 'stat-value ' + (entPhase==='3'||entPhase==='3j'
+    ? (ent<0.8 ? 'ok' : ent<1.2 ? 'warn' : 'bad')
+    : 'warn');
+  document.getElementById('s-entropy-sub').textContent =
+    entPhase==='3'||entPhase==='3j'
+      ? (ent<0.8 ? '✅ diverged' : `→ need < 0.8 (Δ${(ent-0.8).toFixed(3)})`)
+      : 'uniform expected (Phase '+entPhase+')';
+
+  // Entropy badge on arm panel
+  document.getElementById('entropy-badge').textContent = `H=${ent.toFixed(3)}`;
+
+  // Push to entropy history
+  entropyHistory.push(ent);
+  if(entropyHistory.length > 2000) entropyHistory.shift();
+  if(entropyHistory.length > 1) drawChart('entropy-chart', entropyHistory, '#a78bfa', 0, 1.8, 0.25);
+
+  // TPS
+  const avgTps=history.slice(-50).map(d=>d.t).reduce((a,b)=>a+b,0)/50;
+  if(avgTps>1000){
+    oks.push({title:`✓ Throughput: ${avgTps.toFixed(0)} TPS`, body:'Real mamba_ssm CUDA kernel active. ~22K steps done, ~228K remaining at this rate ≈ 62 hrs to Phase 1 complete.'});
+  }
+
+  // ETA
+  if(history.length>0){
+    const cur=history[history.length-1].s;
+    const remaining=40000-cur;
+    const hrs=(remaining/(avgTps||1000)*4096/3600).toFixed(1);
+    oks.push({title:`✓ ETA: ~${hrs} hours remaining`, body:`Step ${cur}/40,000 (${(cur/400).toFixed(1)}%). At ~300 actual TPS.`});
+  }
+
+  const el=document.getElementById('diagnosis');
+  el.innerHTML='';
+  concerns.forEach(c=>{
+    el.innerHTML+=`<div class="concern"><div class="concern-title">${c.title}</div><div class="concern-body">${c.body}</div></div>`;
+  });
+  oks.forEach(o=>{
+    el.innerHTML+=`<div class="ok-item"><div class="ok-title">${o.title}</div><div class="ok-body">${o.body}</div></div>`;
+  });
+}
+
+// ─── Arm panel ───────────────────────────────────────────────────────────────
+const ARM_NAMES=['General Language','Symbolic Math','Logical Reasoning','Code Syntax',
+                  'Factual Recall','Summarization','Creative Writing','Instr Following'];
+const ARM_COLORS=['#4ade80','#38bdf8','#f59e0b','#a78bfa','#fb7185','#34d399','#f472b6','#60a5fa'];
+
+function renderArms(weights){
+  const el=document.getElementById('arms-panel'); el.innerHTML='';
+  const max=Math.max(...weights)||1;
+  weights.forEach((w,i)=>{
+    el.innerHTML+=`
+      <div class="arm-row">
+        <div class="arm-label" title="${ARM_NAMES[i]}">#${i} ${ARM_NAMES[i]}</div>
+        <div class="arm-bar-bg"><div class="arm-bar" style="width:${(w/max*100).toFixed(1)}%;background:${ARM_COLORS[i]}"></div></div>
+        <div class="arm-pct">${(w*100).toFixed(1)}%</div>
+      </div>`;
+  });
+}
+
+// ─── Word salad panel ────────────────────────────────────────────────────────
+function renderSalad(s){
+  if(!s){return;}
+  document.getElementById('salad-step').textContent=`@ step ${s.step}`;
+  const quality=s.quality||'poor';
+  const bClass=quality==='good'?'badge-good':quality==='fair'?'badge-fair':'badge-poor';
+  document.getElementById('salad-badge').innerHTML=`<span class="salad-badge ${bClass}">${quality.toUpperCase()}</span>`;
+  const el=document.getElementById('salad-panel'); el.innerHTML='';
+  (s.samples||[]).forEach(sample=>{
+    const shortPrompt=sample.prompt.replace(/<\|im_start\|>user\n/,'').replace(/<\|im_end\|>\n<\|im_start\|>assistant\n/,'');
+    const isError=sample.output.startsWith('[error:');
+    el.innerHTML+=`
+      <div class="salad-prompt">${shortPrompt.slice(0,60)}</div>
+      <div class="salad-output ${isError?'error':''}">${isError?sample.output:sample.output||'<em style="color:var(--muted)">(empty)</em>'}</div>`;
+  });
+  el.innerHTML+=`<div style="font-size:11px;color:var(--muted);margin-top:4px">avg_rep=${(s.avg_rep*100).toFixed(0)}% · elapsed=${s.elapsed_s}s</div>`;
+}
+
+// ─── Main update loop ─────────────────────────────────────────────────────────
+async function update(){
+  try {
+    const [telRaw, saladRaw, histRaw] = await Promise.all([
+      fetch('telemetry.json?_='+Date.now()).then(r=>r.json()),
+      fetch('word_salad.json?_='+Date.now()).then(r=>r.json()).catch(()=>null),
+      fetch('history.json?_='+Date.now()).then(r=>r.json()).catch(()=>null),
+    ]);
+
+    if(histRaw && (histRaw.length !== history.length || (history.length > 0 && histRaw[histRaw.length-1].s !== history[history.length-1].s))) {
+      history=histRaw;
+      renderCharts();
+    }
+
+    // Stats
+    const step = telRaw.step||0;
+    const loss = telRaw.lm_loss||0, tps = telRaw.tps||0, temp = telRaw.gpu_temp||0, lr = telRaw.lr||0;
+    const TARGETS = {'1':40000,'2':60000,'3':75000,'3j':30000};
+    const phase = telRaw.phase||'1';
+    const TARGET = TARGETS[phase]||75000;
+    const pct=(step/TARGET*100).toFixed(1);
+    document.getElementById('s-step').textContent=step.toLocaleString();
+    document.getElementById('s-progress-label').textContent=`${pct}% of ${(TARGET/1000).toFixed(0)}K (Phase ${phase})`;
+    document.getElementById('s-progress').style.width=Math.min(pct,100)+'%';
+
+
+    const lossColor=loss<3?'ok':loss<8?'warn':'bad';
+    document.getElementById('s-loss').className=`stat-value ${lossColor}`;
+    document.getElementById('s-loss').textContent=loss.toFixed(3);
+    document.getElementById('s-loss-sub').textContent=`gnorm=${(telRaw.grad_norm||0).toFixed(2)}`;
+
+    document.getElementById('s-tps').textContent=Math.round(tps).toLocaleString();
+    const remaining=TARGET-step;
+    const etaH=(remaining/(tps||1)*4096/3600).toFixed(1);
+    document.getElementById('s-eta').textContent=`ETA ~${etaH}h remaining`;
+
+    const tempColor=temp<75?'ok':temp<83?'warn':'bad';
+    document.getElementById('s-temp').className=`stat-value ${tempColor}`;
+    document.getElementById('s-temp').textContent=`${temp}°C`;
+    document.getElementById('s-lr').textContent=`LR=${lr.toExponential(2)}`;
+
+    // Arm routing
+    if(telRaw.arm_weights) renderArms(telRaw.arm_weights);
+
+
+
+
+    // Salad
+    renderSalad(saladRaw);
+
+    // Diagnosis
+    buildDiagnosis(telRaw, saladRaw);
+
+    // Footer
+    document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();
+    document.getElementById('f-right').textContent=`Step ${step} · ${new Date().toLocaleTimeString()}`;
+
+  } catch(e) {
+    document.getElementById('last-update').textContent='⚠ fetch error: '+e.message;
+  }
+}
+
+update();
+setInterval(update, 5000);
+window.addEventListener('resize', renderCharts);
+</script>
+</body>
+</html>

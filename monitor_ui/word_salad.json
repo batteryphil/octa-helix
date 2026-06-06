@@ -1,0 +1,30 @@
+{
+  "step": 1000,
+  "phase": "1",
+  "timestamp": "2026-06-05 18:07:31",
+  "elapsed_s": 231.67,
+  "avg_rep": 0.052,
+  "quality": "good",
+  "samples": [
+    {
+      "prompt": "User: Write a Python function to compute the Fibonacci sequence.\nAssistant: <think>\n",
+      "output": "National established two have its, Pakistan and also be the students of the single in such ensure were continue at grow our fruits of 15s A un00. A are few can up that an long seeking it King may most plan by considered as everything will all available of one.",
+      "rep_rate": 0.08
+    },
+    {
+      "prompt": "User: If John has 5 apples and eats 2, then buys 3 more, how many does he have?\nAssistant: <think>\n",
+      "output": "-\n Le) 2014), ArcticThe the statgeola place of population as create here.\n A piece can will its college for each in short to there is be make a whole necessary. The treatment by 11 was see your we you possibly would been that issues on accept are only write very required",
+      "rep_rate": 0.0
+    },
+    {
+      "prompt": "User: Explain the difference between a list and a tuple in Python.\nAssistant: <think>\n",
+      "output": "Some is be can two out will at their to slowly, the opposition of create not the central exercise for our work which concern as some medicine need by generate add simply to all provide much measures that food must each purchase are days. It conditions of leave what he by this or approved to help with 3",
+      "rep_rate": 0.086
+    },
+    {
+      "prompt": "User: Who was the 16th president of the United States and what is he known for?\nAssistant: <think>\n",
+      "output": "C). 17-, James.2 will be an country, Tcyola can a world area to the new exposure of all unwate must this attention from the logic.\nThis such you continue are each ten relations that intersect recommendations of live time off designed Republic or have making in joining its demand",
+      "rep_rate": 0.041
+    }
+  ]
+}

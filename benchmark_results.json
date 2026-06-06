@@ -1,0 +1,430 @@
+{
+  "routing": {
+    "president": {
+      "weights": [
+        0.1309,
+        0.082,
+        0.0,
+        0.0,
+        0.0179,
+        0.25,
+        0.0928,
+        0.4258
+      ],
+      "entropy": 1.4740923643112183,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.4258
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.25
+        }
+      ]
+    },
+    "algebra": {
+      "weights": [
+        0.0,
+        0.1377,
+        0.0,
+        0.0,
+        0.0203,
+        0.332,
+        0.0,
+        0.5117
+      ],
+      "entropy": 1.06093168258667,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.5117
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.332
+        }
+      ]
+    },
+    "capital": {
+      "weights": [
+        0.0625,
+        0.1016,
+        0.0,
+        0.0,
+        0.0625,
+        0.3125,
+        0.0625,
+        0.3984
+      ],
+      "entropy": 1.4822708368301392,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.3984
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.3125
+        }
+      ]
+    },
+    "boolq": {
+      "weights": [
+        0.0007,
+        0.1387,
+        0.0,
+        0.0,
+        0.0155,
+        0.2637,
+        0.0522,
+        0.5273
+      ],
+      "entropy": 1.18698251247406,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.5273
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.2637
+        }
+      ]
+    },
+    "math": {
+      "weights": [
+        0.1157,
+        0.1021,
+        0.0,
+        0.0,
+        0.0859,
+        0.3125,
+        0.0,
+        0.3848
+      ],
+      "entropy": 1.4243569374084473,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.3848
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.3125
+        }
+      ]
+    },
+    "code": {
+      "weights": [
+        0.0688,
+        0.0903,
+        0.0,
+        0.0,
+        0.0206,
+        0.2832,
+        0.0928,
+        0.4453
+      ],
+      "entropy": 1.4195867776870728,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.4453
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.2832
+        }
+      ]
+    },
+    "logic": {
+      "weights": [
+        0.1045,
+        0.0221,
+        0.0188,
+        0.0,
+        0.0,
+        0.2412,
+        0.0549,
+        0.5586
+      ],
+      "entropy": 1.2226967811584473,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.5586
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.2412
+        }
+      ]
+    },
+    "creative": {
+      "weights": [
+        0.0469,
+        0.0825,
+        0.0001,
+        0.0,
+        0.0182,
+        0.2559,
+        0.0991,
+        0.498
+      ],
+      "entropy": 1.3478111028671265,
+      "top2": [
+        {
+          "arm": 7,
+          "name": "Instruction Following",
+          "weight": 0.498
+        },
+        {
+          "arm": 5,
+          "name": "Summarization",
+          "weight": 0.2559
+        }
+      ]
+    }
+  },
+  "arm_collapse": {
+    "per_arm": [
+      0.8099,
+      0.8399,
+      0.827,
+      0.3076,
+      0.837,
+      0.8321,
+      0.8303,
+      0.7876
+    ],
+    "mean": 0.7589,
+    "max": 0.8399
+  },
+  "blackboard": {
+    "president": {
+      "kl_divergence": 1.3387,
+      "top_changed": true,
+      "top_with_bb": "Yes",
+      "top_without_bb": "The"
+    },
+    "algebra": {
+      "kl_divergence": 2.1815,
+      "top_changed": true,
+      "top_with_bb": "x",
+      "top_without_bb": "We"
+    },
+    "capital": {
+      "kl_divergence": 1.6662,
+      "top_changed": true,
+      "top_with_bb": "Yes",
+      "top_without_bb": "|"
+    },
+    "boolq": {
+      "kl_divergence": 1.3307,
+      "top_changed": true,
+      "top_with_bb": "Yes",
+      "top_without_bb": "The"
+    }
+  },
+  "concept_perceptron": {
+    "president": {
+      "kl": 0.000614,
+      "cp_gate": 0.016113
+    },
+    "algebra": {
+      "kl": 0.000994,
+      "cp_gate": 0.016113
+    },
+    "capital": {
+      "kl": 0.000339,
+      "cp_gate": 0.016113
+    },
+    "boolq": {
+      "kl": 0.000391,
+      "cp_gate": 0.016113
+    }
+  },
+  "thalamic_primer": {
+    "president": {
+      "primer_mag": 54.0,
+      "emb_mag": 45.25,
+      "ratio": 1.1934,
+      "kl": 0.034957
+    },
+    "algebra": {
+      "primer_mag": 49.5,
+      "emb_mag": 45.25,
+      "ratio": 1.0939,
+      "kl": 0.052498
+    },
+    "capital": {
+      "primer_mag": 52.25,
+      "emb_mag": 45.5,
+      "ratio": 1.1484,
+      "kl": 0.034658
+    },
+    "boolq": {
+      "primer_mag": 51.25,
+      "emb_mag": 45.5,
+      "ratio": 1.1264,
+      "kl": 0.032947
+    }
+  },
+  "arm_ablation": {
+    "0": {
+      "name": "General Language",
+      "kl": 0.0029,
+      "top_changed": false
+    },
+    "1": {
+      "name": "Symbolic Math",
+      "kl": 0.0008,
+      "top_changed": false
+    },
+    "2": {
+      "name": "Logical Reasoning",
+      "kl": 0.0,
+      "top_changed": false
+    },
+    "3": {
+      "name": "Code Syntax",
+      "kl": 0.0,
+      "top_changed": false
+    },
+    "4": {
+      "name": "Factual Recall",
+      "kl": 0.001,
+      "top_changed": false
+    },
+    "5": {
+      "name": "Summarization",
+      "kl": 0.1414,
+      "top_changed": false
+    },
+    "6": {
+      "name": "Creative Writing",
+      "kl": 0.001,
+      "top_changed": false
+    },
+    "7": {
+      "name": "Instruction Following",
+      "kl": 0.1021,
+      "top_changed": false
+    }
+  },
+  "termination": {
+    "president": {
+      "raw_rank": 4,
+      "bias_0.0": 0.012178,
+      "bias_3.0": 0.198476,
+      "bias_5.0": 0.646606,
+      "bias_8.0": 0.97351,
+      "bias_12.0": 0.999502
+    },
+    "algebra": {
+      "raw_rank": 18,
+      "bias_0.0": 0.00486,
+      "bias_3.0": 0.089323,
+      "bias_5.0": 0.420205,
+      "bias_8.0": 0.93572,
+      "bias_12.0": 0.998743
+    },
+    "capital": {
+      "raw_rank": 3,
+      "bias_0.0": 0.018116,
+      "bias_3.0": 0.27038,
+      "bias_5.0": 0.732492,
+      "bias_8.0": 0.982142,
+      "bias_12.0": 0.999667
+    },
+    "boolq": {
+      "raw_rank": 4,
+      "bias_0.0": 0.011271,
+      "bias_3.0": 0.186308,
+      "bias_5.0": 0.628508,
+      "bias_8.0": 0.971414,
+      "bias_12.0": 0.999461
+    },
+    "math": {
+      "raw_rank": 3,
+      "bias_0.0": 0.009627,
+      "bias_3.0": 0.163345,
+      "bias_5.0": 0.590602,
+      "bias_8.0": 0.96664,
+      "bias_12.0": 0.999368
+    },
+    "code": {
+      "raw_rank": 11,
+      "bias_0.0": 0.005791,
+      "bias_3.0": 0.104733,
+      "bias_5.0": 0.463637,
+      "bias_8.0": 0.94554,
+      "bias_12.0": 0.998946
+    },
+    "logic": {
+      "raw_rank": 1,
+      "bias_0.0": 0.025663,
+      "bias_3.0": 0.345989,
+      "bias_5.0": 0.796293,
+      "bias_8.0": 0.987424,
+      "bias_12.0": 0.999767
+    },
+    "creative": {
+      "raw_rank": 64,
+      "bias_0.0": 0.002133,
+      "bias_3.0": 0.041161,
+      "bias_5.0": 0.240812,
+      "bias_8.0": 0.864335,
+      "bias_12.0": 0.997133
+    }
+  },
+  "factual": {
+    "16th president": {
+      "expected": "Lincoln",
+      "output": "800 workers were born in 20 countries.\n\nYes, there were 250 members of the class",
+      "hit": false
+    },
+    "capital france": {
+      "expected": "Paris",
+      "output": "24x = 24.0\n\nx = 24x = 24.9\n0.6x = 24.6x = 24.6x = 24.4x = 24.",
+      "hit": false
+    },
+    "2+2": {
+      "expected": "4",
+      "output": "2/2 - 2 - 2 - 2 - 2 - 6 - 2 - 2 - 2 - 4 - 2 - 2 - 2 + 2 - 2 + 2 - 2 - 2 - 2 +",
+      "hit": true
+    },
+    "earth orbit": {
+      "expected": "yes",
+      "output": "the Sun\nwith the Earth\nScandal: At the Grillings, it took 3:11:55.\n\nNo. 2: (2: 3",
+      "hit": false
+    }
+  },
+  "arm_communication": {
+    "bb_read_norm": 2.9835,
+    "bb_write_norm": 4.9554,
+    "mean_cross_arm_sim": 0.7626
+  },
+  "bridge": {
+    "down_norm": 13.1566,
+    "up_norm": 26.1244,
+    "signal_in": 300.6138,
+    "signal_out": 74.5496,
+    "retention": 0.248
+  }
+}

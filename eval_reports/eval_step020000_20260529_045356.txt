@@ -1,0 +1,90 @@
+========================================================================
+  MAMBA3 TITAN — BENCHMARK REPORT  |  Step 20,000 / 20,000
+  UTC: 2026-05-29T04:53:57.541202
+========================================================================
+
+OVERALL SUMMARY
+───────────────
+  Pass rate          : 0/21  (0.0%)
+  </think> closure   : 0.0% of prompts
+  Avg think tokens   : 0
+  Avg answer tokens  : 0
+  Avg think rep rate : 0.0%
+  Avg answer rep rate: 0.0%
+  Avg gen time       : 0.00s  (0 tok/s)
+  Held-out perplexity: 5.85
+  Router temperature : 1.0
+  VRAM               : 3.45 / 12.48 GB
+
+BY CATEGORY
+───────────
+
+DETAILED RESULTS
+────────────────
+
+[01] factual_history | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Who was the 16th president of the United States?
+
+[02] factual_history | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : In what year did World War II end?
+
+[03] factual_history | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : What is the chemical symbol for gold?
+
+[04] factual_science | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : What is the speed of light in a vacuum?
+
+[05] factual_science | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : How many planets are in our solar system?
+
+[06] math_arithmetic | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : If a train leaves at 9am traveling at 60mph and another leaves the same station at 10am traveling at 80mph in the same direction, at what time does the second train catch the first?
+
+[07] math_arithmetic | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : What is 17 multiplied by 23?
+
+[08] math_algebra | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Solve for x: 3x + 7 = 22
+
+[09] math_calculus | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : What is the derivative of f(x) = x^3 + 2x^2 - 5x + 7?
+
+[10] logic_deduction | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : All mammals are warm-blooded. Dolphins are mammals. Are dolphins warm-blooded?
+
+[11] logic_counterfactual | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : If you have a 3-gallon jug and a 5-gallon jug, how do you measure exactly 4 gallons?
+
+[12] logic_sequence | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : What comes next in the sequence: 2, 6, 12, 20, 30, ?
+
+[13] language_counting | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : How many times does the letter 'r' appear in the word 'strawberry'?
+
+[14] language_counting | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : How many syllables are in the word 'extraordinary'?
+
+[15] code_python | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Write a Python function that returns True if a number is prime, False otherwise.
+
+[16] code_python | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Write a Python function to reverse a string without using slicing.
+
+[17] code_algorithm | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Explain the time complexity of bubble sort and why.
+
+[18] common_sense | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : If I put an ice cube in a cup of hot coffee, what happens to the ice?
+
+[19] common_sense | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : Why do we see lightning before we hear thunder?
+
+[20] word_problem | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : A store sells apples for $0.50 each and oranges for $0.75 each. If Sarah buys 4 apples and 3 oranges, how much does she spend in total?
+
+[21] word_problem | ERROR: Tensors must have same number of dimensions: got 2 and 3
+     Prompt : A tank is 60% full with 300 liters of water. What is the total capacity of the tank?
+
+========================================================================
+  END OF REPORT
+========================================================================

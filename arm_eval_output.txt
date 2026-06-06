@@ -1,0 +1,21 @@
+Loading /home/phil/.gemini/antigravity/scratch/analysis_project/titan_checkpoints/phase_3.pt ...
+Titan Architecture → Phase 3  (Blackboard FROZEN/SILENT | Arms TRAINING)
+Arm      | Identity | Perplexity | Generation Output
+----------------------------------------------------------------------------------------------------
+Arm 0    | General Language | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 1    | Symbolic Math | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 2    | Logical Reasoning | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 3    | Code Syntax | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 4    | Factual Recall | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 5    | Summarization | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 6    | Creative Writing | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 7    | Instruction Following | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 8    | Analogical Reasoning | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 9    | Causal Inference | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 10   | Spatial Reasoning | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 11   | Temporal Reasoning | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 12   | Ethical Judgment | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 13   | Multilingual Bridge | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 14   | Meta-Cognition | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+Arm 15   | Synthesis | 999999.00  | cover Living Living Living Living Living Living Living Living Living Living Living Living Living Living
+----------------------------------------------------------------------------------------------------

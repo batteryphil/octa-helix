@@ -1,0 +1,150 @@
+{
+  "summary": {
+    "step": 20000,
+    "utc": "2026-05-29T04:53:57.540843",
+    "total_benchmarks": 21,
+    "passed": 0,
+    "failed": 21,
+    "pass_rate": 0.0,
+    "end_think_rate": 0.0,
+    "avg_think_tokens": 0.0,
+    "avg_answer_tokens": 0.0,
+    "avg_think_rep_rate": 0.0,
+    "avg_answer_rep_rate": 0.0,
+    "avg_gen_time_s": 0.0,
+    "avg_tok_per_sec": 0.0,
+    "perplexity_held_out": 5.85,
+    "router_temp": 1.0,
+    "vram_used_gb": 3.453,
+    "vram_total_gb": 12.481,
+    "by_category": {}
+  },
+  "results": [
+    {
+      "index": 1,
+      "category": "factual_history",
+      "prompt": "Who was the 16th president of the United States?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 2,
+      "category": "factual_history",
+      "prompt": "In what year did World War II end?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 3,
+      "category": "factual_history",
+      "prompt": "What is the chemical symbol for gold?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 4,
+      "category": "factual_science",
+      "prompt": "What is the speed of light in a vacuum?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 5,
+      "category": "factual_science",
+      "prompt": "How many planets are in our solar system?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 6,
+      "category": "math_arithmetic",
+      "prompt": "If a train leaves at 9am traveling at 60mph and another leaves the same station at 10am traveling at 80mph in the same direction, at what time does the second train catch the first?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 7,
+      "category": "math_arithmetic",
+      "prompt": "What is 17 multiplied by 23?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 8,
+      "category": "math_algebra",
+      "prompt": "Solve for x: 3x + 7 = 22",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 9,
+      "category": "math_calculus",
+      "prompt": "What is the derivative of f(x) = x^3 + 2x^2 - 5x + 7?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 10,
+      "category": "logic_deduction",
+      "prompt": "All mammals are warm-blooded. Dolphins are mammals. Are dolphins warm-blooded?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 11,
+      "category": "logic_counterfactual",
+      "prompt": "If you have a 3-gallon jug and a 5-gallon jug, how do you measure exactly 4 gallons?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 12,
+      "category": "logic_sequence",
+      "prompt": "What comes next in the sequence: 2, 6, 12, 20, 30, ?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 13,
+      "category": "language_counting",
+      "prompt": "How many times does the letter 'r' appear in the word 'strawberry'?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 14,
+      "category": "language_counting",
+      "prompt": "How many syllables are in the word 'extraordinary'?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 15,
+      "category": "code_python",
+      "prompt": "Write a Python function that returns True if a number is prime, False otherwise.",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 16,
+      "category": "code_python",
+      "prompt": "Write a Python function to reverse a string without using slicing.",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 17,
+      "category": "code_algorithm",
+      "prompt": "Explain the time complexity of bubble sort and why.",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 18,
+      "category": "common_sense",
+      "prompt": "If I put an ice cube in a cup of hot coffee, what happens to the ice?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 19,
+      "category": "common_sense",
+      "prompt": "Why do we see lightning before we hear thunder?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 20,
+      "category": "word_problem",
+      "prompt": "A store sells apples for $0.50 each and oranges for $0.75 each. If Sarah buys 4 apples and 3 oranges, how much does she spend in total?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    },
+    {
+      "index": 21,
+      "category": "word_problem",
+      "prompt": "A tank is 60% full with 300 liters of water. What is the total capacity of the tank?",
+      "error": "Tensors must have same number of dimensions: got 2 and 3"
+    }
+  ]
+}

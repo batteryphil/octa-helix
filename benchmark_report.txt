@@ -1,0 +1,6 @@
+MAMBA3 TITAN — FULL DISSECTION BENCHMARK
+Checkpoint: titan_checkpoints/phase_sft3_sprint.pt
+Timestamp : 2026-06-04 10:02:59 UTC
+Device    : cuda
+
+Loading model...

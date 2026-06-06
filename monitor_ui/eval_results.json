@@ -1,0 +1,12 @@
+{
+  "phase": "3",
+  "perplexity": 146.3,
+  "avg_nll": 4.9857,
+  "coherence_score": "0/5",
+  "coherence_pct": 0.0,
+  "repetition_rate": 0.0,
+  "ppl_verdict": "\u2705 STRONG \u2014 language model is coherent",
+  "coh_verdict": "\ud83d\udd34 INCOHERENT \u2014 expected at this stage",
+  "rep_verdict": "\u2705 FLUID \u2014 no repetition loops",
+  "timestamp": "2026-05-28 17:27:13"
+}
