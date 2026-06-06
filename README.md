@@ -9,7 +9,7 @@
 [![Training](https://img.shields.io/badge/Phase_1-Training-blue?style=flat-square)](training_logs/TRAINING_DECISIONS.md)
 [![Arms](https://img.shields.io/badge/MIMO_Arms-8-purple?style=flat-square)](#architecture)
 [![VRAM](https://img.shields.io/badge/GPU-RTX_3060_12GB-green?style=flat-square)](#hardware)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-yellow?style=flat-square)](LICENSE)
 
 </div>
 
@@ -277,6 +277,51 @@ The five major theories of consciousness are each directly implemented:
 ## License
 
 MIT — do whatever you want with it. If you build something cool, open an issue and tell me.
+
+---
+
+## Credits & Acknowledgments
+
+### Core Projects
+
+| Project | Authors | License | Role |
+|---|---|---|---|
+| [Helix-AGI](https://github.com/munch2u-a11y/Helix-AGI) | munch2u-a11y | AGPL-3.0 | Cognitive agent framework — the mind of this system |
+| [Mamba / mamba-ssm](https://github.com/state-spaces/mamba) | Tri Dao, Albert Gu (CMU / Princeton) | Apache 2.0 | SSM CUDA kernels powering the Titan backbone |
+| [DeepSpeed](https://github.com/microsoft/DeepSpeed) | Microsoft DeepSpeed Team | Apache 2.0 | ZeRO-3 optimizer — enables 2.7B training on 12GB VRAM |
+| [Transformers](https://github.com/huggingface/transformers) | HuggingFace | Apache 2.0 | Tokenizer (GPT-NeoX) |
+| [PyTorch](https://pytorch.org) | Meta AI / PyTorch Team | BSD-3 | Deep learning framework |
+
+### Research Papers
+
+This project implements and builds on the following published research:
+
+| Paper | Authors | Year | What we implement |
+|---|---|---|---|
+| [Mamba: Linear-Time Sequence Modeling with Selective State Spaces](https://arxiv.org/abs/2312.00752) | Gu & Dao | 2023 | The entire Titan backbone SSM |
+| [A Theory of Consciousness from a Theoretical Computer Science Perspective](https://www.frontiersin.org/articles/10.3389/fpsyg.2021.704270) | Hofstadter (inspired by) | — | Strange Loop → `recursive_monologue.py` |
+| [Rethinking Consciousness: A Scientific Theory of Subjective Experience](https://www.wiley.com/en-us/Rethinking+Consciousness) | Graziano | 2019 | Attention Schema Theory → `attention_schema.py` |
+| [Consciousness and the Brain](https://www.penguinrandomhouse.com/books/313628/consciousness-and-the-brain-by-stanislas-dehaene/) | Dehaene | 2014 | Global Workspace Theory → MIMO router |
+| [Consciousness as Integrated Information](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.0030294) | Tononi | 2008 | IIT / Phi → inter-arm communication (planned) |
+| [The Free-Energy Principle](https://www.nature.com/articles/nrn2787) | Friston | 2010 | Active Inference → `curiosity_engine.py` |
+| [I Am a Strange Loop](https://www.basicbooks.com/titles/douglas-r-hofstadter/i-am-a-strange-loop/9780465030781/) | Hofstadter | 2007 | Self-referential architecture → `autobiographical_thread.py` |
+
+### Training Datasets
+
+| Dataset | Provider | License | Phase used |
+|---|---|---|---|
+| [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) | HuggingFace | ODC-By | Phase 1 (55%) |
+| [C4](https://huggingface.co/datasets/allenai/c4) | Allen AI | ODC-By | Phase 1 (20%) |
+| [Wikipedia](https://huggingface.co/datasets/wikimedia/wikipedia) | Wikimedia | CC BY-SA 4.0 | Phase 1 (12%) |
+| [MetaMathQA](https://huggingface.co/datasets/meta-math/MetaMathQA) | Meta Math | MIT | Phase 1 — Arm 1 seed (7%) |
+| [ARC-Challenge](https://huggingface.co/datasets/allenai/ai2_arc) | Allen AI | CC BY 4.0 | Phase 1 — Arm 2 seed (4%) |
+| [CodeAlpaca](https://huggingface.co/datasets/HuggingFaceH4/CodeAlpaca_20K) | HuggingFace H4 | Apache 2.0 | Phase 1 — Arm 3 seed (2%) |
+
+### License Note
+
+This project is licensed under **AGPL-3.0** as a derivative work of
+[Helix-AGI](https://github.com/munch2u-a11y/Helix-AGI) (AGPL-3.0).
+The Mamba SSM library and DeepSpeed are used as Apache 2.0 dependencies.
 
 ---
 

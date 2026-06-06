@@ -1,0 +1,29 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+Octa-Helix — Copyright (C) 2026 Phil (batteryphil)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+-------------------------------------------------------------------------------
+NOTE ON LICENSE CHOICE
+
+This project incorporates Helix-AGI (github.com/munch2u-a11y/Helix-AGI),
+which is licensed under AGPL-3.0. As a derivative work, Octa-Helix is
+therefore also distributed under AGPL-3.0.
+
+The Mamba SSM library (github.com/state-spaces/mamba) is licensed under
+Apache 2.0 and is used as a dependency without modification.
+
+DeepSpeed is licensed under Apache 2.0.
