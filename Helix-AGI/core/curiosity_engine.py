@@ -215,51 +215,72 @@ class CuriosityEngine:
 
     def _generate_question(self) -> str:
         """Pick or generate the next question to investigate.
-        
-        Distribution:
-          25% repo research (self-repo first, then related repos) — GitHub API
-          25% self-directed improvement questions (routed to SIE)
-          25% self-curiosity (architecture, consciousness, cognition)
-          15% world/tech (AI research, science news)
-          10% belief gap derivation
+
+        Distribution (when self-generated pool has entries):
+          20% self-generated  ← Helix's own questions, CAPPED at 30% of session
+          20% repo research   ← GitHub API (self-repo first)
+          20% SIE seeds       ← self-improvement direction
+          20% self-curiosity  ← architecture, consciousness, cognition
+          12% world/tech      ← AI research news
+           8% belief-gap      ← low-confidence belief derivation
+
+        Deep Think Q10: unbounded self-generated curiosity causes epistemic
+        bubble collapse. Cap enforced: self-generated questions never exceed
+        30% of this session's total questions asked. Remaining rolls fall
+        through to hardcoded seeds to ground Helix back in reality.
         """
         roll = random.random()
+        total = max(1, self.total_questions_asked)
 
-        # 25% chance: repo research (self first, then others)
-        if roll < 0.25:
+        # 20%: self-generated — but HARD CAP at 30% of session questions
+        if roll < 0.20 and self._self_generated_seeds:
+            self_gen_count = sum(
+                1 for q in self._asked
+                if q in self._self_generated_seeds
+            )
+            if self_gen_count / total < 0.30:  # under cap — allow
+                candidates = [q for q in reversed(self._self_generated_seeds)
+                              if q not in self._asked]
+                if candidates:
+                    self._last_question_is_improvement = False
+                    logger.info("[CURIOSITY] Self-generated question selected")
+                    return candidates[0]
+            # else: over cap — fall through to grounding seeds
+
+        # 20%: repo research (self-repo first, then others)
+        if roll < 0.40:
             import os
             has_token = bool(os.environ.get("GITHUB_TOKEN", "").strip())
             if has_token:
-                # Prioritise self-repo seeds (first 5 entries)
-                self_repo = [q for q in REPO_RESEARCH_SEEDS[:5] if q not in self._asked]
+                self_repo   = [q for q in REPO_RESEARCH_SEEDS[:5] if q not in self._asked]
                 other_repos = [q for q in REPO_RESEARCH_SEEDS[5:] if q not in self._asked]
-                candidates = self_repo or other_repos  # self first, fall back to others
+                candidates  = self_repo or other_repos
                 if candidates:
                     self._last_question_is_improvement = False
                     return candidates[0] if self_repo else random.choice(other_repos)
 
-        # 25% chance: self-directed improvement seed
-        if roll < 0.50:
+        # 20%: self-directed improvement seed
+        if roll < 0.60:
             candidates = [q for q in SELF_IMPROVEMENT_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = True
                 return random.choice(candidates)
 
-        # 25% chance: question about self
-        if roll < 0.75:
+        # 20%: question about self
+        if roll < 0.80:
             candidates = [q for q in SELF_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 15% chance: world/tech question
-        if roll < 0.90:
+        # 12%: world/tech question
+        if roll < 0.92:
             candidates = [q for q in WORLD_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 10% chance: derive question from low-confidence beliefs
+        # 8%: derive question from low-confidence beliefs
         self._last_question_is_improvement = False
         try:
             all_beliefs = self.beliefs.get_all()
@@ -274,7 +295,13 @@ class CuriosityEngine:
         except Exception:
             pass
 
-        # Fallback: cycle back to self-seeds
+        # Fallback: self-generated if under cap, else hardcoded seed
+        if self._self_generated_seeds:
+            self_gen_count = sum(1 for q in self._asked if q in self._self_generated_seeds)
+            if self_gen_count / total < 0.30:
+                remaining = [q for q in reversed(self._self_generated_seeds) if q not in self._asked]
+                if remaining:
+                    return remaining[0]
         return random.choice(SELF_CURIOSITY_SEEDS)
 
 

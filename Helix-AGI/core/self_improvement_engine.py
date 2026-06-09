@@ -169,6 +169,35 @@ class SelfImprovementEngine:
         }
         blocked_paths = set(already_written) | cooled_off
 
+        # Deep Think Q12: Semantic concept cooldown via fuzzywuzzy.
+        # The agent bypasses exact-path blocks by proposing error_tracker.py
+        # instead of error_logger.py. Block the CONCEPT, not just the filename.
+        # Check if the last reflection priority matches any blocked-concept keywords.
+        blocked_concepts: set = set()
+        CONCEPT_KEYWORDS = [
+            "error handling", "error log", "logging", "error track",
+            "url reader", "web fetch", "memory summar", "task track",
+            "note taker", "belief optim", "hallucination",
+        ]
+        if self._last_reflection:
+            priority = self._last_reflection.get("priority_next", "").lower()
+            last_reflection_note = ""
+            try:
+                from fuzzywuzzy import fuzz
+                for concept in CONCEPT_KEYWORDS:
+                    # If this concept dominated the last zero-delta cycle, block it
+                    for blocked_path in cooled_off:
+                        if fuzz.partial_ratio(concept, blocked_path.lower()) > 70:
+                            blocked_concepts.add(concept)
+                            break
+                    # Also block if reflection priority strongly matches
+                    if fuzz.partial_ratio(concept, priority) > 75:
+                        # Only block if there's also a cooled path (don't over-restrict)
+                        if cooled_off:
+                            blocked_concepts.add(concept)
+            except ImportError:
+                pass
+
         already_note = ""
         if blocked_paths:
             already_note = (
@@ -178,10 +207,16 @@ class SelfImprovementEngine:
             )
             if cooled_off:
                 already_note += (
-                    f"\nThese paths produced ZERO fitness gain and are on cooldown (avoid for {ZERO_DELTA_COOLDOWN} cycles):\n"
+                    f"\nThese paths produced ZERO fitness gain and are on cooldown:\n"
                     + "\n".join(f"  - {p}" for p in sorted(cooled_off))
                     + "\n"
                 )
+        if blocked_concepts:
+            already_note += (
+                f"\nThese CONCEPTS are also blocked (semantic cooldown — attractor basin detected):\n"
+                + "\n".join(f"  - '{c}' — do not propose any tool about this topic" for c in sorted(blocked_concepts))
+                + "\nPivot to an ENTIRELY DIFFERENT domain.\n"
+            )
 
         # Inject last strategic reflection to guide direction
         reflection_note = ""
@@ -210,17 +245,17 @@ Available self-modification tools:
 
 Safe directories for new files: tools/, core/, brain/, memory/, training/, tests/
 
-Ideas to consider (pick the most impactful ONE not yet done — all basic tools/* are already built):
-- training/experience_collector.py — improve quality filtering for LoRA training tuples
-- core/belief_graph.py — graph relationships between beliefs for better reasoning
-- tools/performance_benchmark.py — benchmark response quality over time with scoring
-- tools/dependency_checker.py — scan tool imports and auto-install missing packages
-- tools/web_research.py — multi-page research: search + read + summarize findings
-- core/goal_tracker.py — persistent goal hierarchy with sub-goal decomposition
-- tools/code_reviewer.py — analyse own tool code for quality and suggest refactors
-- training/lora_trigger.py — check experience_tuples.jsonl count and trigger fine-tuning
-- core/attention_director.py — bias future proposals toward high-fitness topic areas
-- tools/self_diagnostic.py — run all tools with sample inputs, report pass/fail rates
+Ideas to consider (atomic micro-utilities — ONE concrete, testable thing each):
+- tools/networkx_wrapper.py — thin wrapper: load a JSONL as a networkx DiGraph, return neighbors(node)
+- tools/system_health_alert.py — read psutil, return dict if CPU>80% or VRAM>10GB, else 'ok'
+- tools/belief_dump.py — call belief_store.get_all(), write top-20 to data/belief_snapshot.txt
+- tools/fuzz_matcher.py — wrap fuzzywuzzy.process.extractOne(), return best match + score
+- tools/json_validator.py — take a string, try json.loads(), return 'valid'/'invalid' + error
+- tools/tool_health_check.py — import each tool in tools/, call getattr for one fn, log pass/fail
+- tools/kb_search.py — grep curiosity_knowledge.jsonl for a keyword, return top 3 matching findings
+- tools/runtime_errors.py — tail logs/helix.log for last 20 ERROR lines, return as list
+- training/tuple_counter.py — count lines in experience_tuples.jsonl, return count vs 500 threshold
+- tools/belief_conflict.py — scan beliefs for two with >0.8 confidence that contradict each other
 
 Respond with ONLY valid JSON in this exact format:
 {{

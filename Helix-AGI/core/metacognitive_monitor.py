@@ -204,13 +204,19 @@ class MetacognitiveMonitor:
                 top_failures.append(f"{len(failed_tools)} tool execution failures")
 
             # Composite fitness
+            # task_completion_rate REMOVED (Deep Think Q9): it was stuck at 0.5
+            # (constant) acting as mathematical deadweight that compressed dynamic
+            # range. Weight redistributed to tool_call_rate (new, direct reward
+            # for tool execution) and tool_success_rate.
+            # New weights: tool_success(0.40) + tool_call(0.25) +
+            #              novel_belief(0.20) + hallucination(0.10) + efficiency(0.05)
             efficiency_score = min(1.0, 200 / max(avg_response_len, 1)) if avg_response_len > 200 else 1.0
             composite = (
-                0.35 * tool_success_rate +
-                0.25 * task_completion_rate +
+                0.40 * tool_success_rate +
+                0.25 * tool_call_rate +
                 0.20 * min(1.0, novel_belief_rate * 10) +
                 0.10 * (1.0 - hallucination_rate) +
-                0.10 * efficiency_score
+                0.05 * efficiency_score
             )
 
             snap = MetaSnapshot(
@@ -258,9 +264,8 @@ class MetacognitiveMonitor:
         return (
             f"Performance snapshot (last {snap.window_size} pulses):\n"
             f"  Tool success rate:     {snap.tool_success_rate:.1%}\n"
-            f"  Tool call rate:        {snap.tool_call_rate:.1%}\n"
+            f"  Tool call rate:        {snap.tool_call_rate:.1%}  [weight 0.25 — primary driver]\n"
             f"  Hallucination rate:    {snap.hallucination_rate:.1%}\n"
-            f"  Task completion rate:  {snap.task_completion_rate:.1%}\n"
             f"  Novel beliefs/50p:     {snap.novel_belief_rate:.3f}\n"
             f"  Avg response length:   {snap.avg_response_len:.0f} chars\n"
             f"  COMPOSITE FITNESS:     {snap.composite_fitness:.3f}/1.0\n"
