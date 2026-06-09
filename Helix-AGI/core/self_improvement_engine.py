@@ -228,15 +228,18 @@ Respond with ONLY valid JSON in this exact format:
         return True, "OK"
 
     def _implement_proposal(self, proposal: Dict) -> tuple[bool, str]:
-        """Phase 3: Generate and write the implementation."""
+        """Phase 3: Generate, write, test, and retry implementation up to 3 times."""
         from tools.code_tools import fc_write_code, fc_run_python, fc_reload_tool
 
         path = proposal.get("target_path", "")
         desc = proposal.get("description", "")
         impl_sketch = proposal.get("implementation_sketch", "")
+        MAX_ATTEMPTS = 3
 
-        # Ask Hermes to write the actual implementation
-        code_prompt = f"""Write complete Python code for this Helix self-improvement:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            if attempt == 1:
+                # First attempt: generate fresh implementation
+                code_prompt = f"""Write complete Python code for this Helix self-improvement:
 
 Description: {desc}
 File: {path}
@@ -244,35 +247,78 @@ Implementation sketch: {impl_sketch}
 
 Rules:
 - Write complete, runnable Python
-- Register in ToolRegistry if it's a tool (toolset='self' or appropriate name)
-- Include docstring explaining what it does
+- Only use stdlib + these installed packages: requests, bs4, psutil, json, re, pathlib
+- Do NOT import: spacy, sklearn, torch, tensorflow, ToolRegistry, knowledge_graph
+- Use relative imports only if the module is in the same directory
+- Include a simple if __name__ == '__main__' smoke-test at the bottom
 - Keep it under 150 lines
 
 Output ONLY the Python code, no explanation:"""
+            else:
+                # Retry: give Hermes the specific error to fix
+                code_prompt = f"""Your previous implementation of {path} failed with this error:
 
-        code = self._call_hermes(code_prompt, max_tokens=600)
-        if not code or len(code.strip()) < 20:
-            return False, "Hermes generated empty implementation"
+ERROR: {last_error}
 
-        # Strip markdown code fences if present
-        code = re.sub(r'^```python\n?|^```\n?|```$', '', code.strip(), flags=re.MULTILINE).strip()
+Original code that failed:
+```python
+{code[:800]}
+```
 
-        # Write the code
-        write_result = fc_write_code(path, code)
-        if "ERROR" in write_result or "REFUSED" in write_result:
-            return False, f"write_code failed: {write_result}"
+Fix the error. Key rules:
+- Only use stdlib + requests, bs4, psutil, json, re, pathlib
+- Do NOT import spacy, sklearn, torch, ToolRegistry, knowledge_graph
+- The fix must be a complete, working Python file
+- Output ONLY the corrected Python code:"""
 
-        # Quick syntax test
-        test_result = fc_run_python(f"import py_compile; py_compile.compile('{path}', doraise=True)")
-        if "Error" in test_result and "exit code: 0" not in test_result:
-            # Try to reload anyway — write_code already did syntax check
-            pass
+            logger.info(f"[SIE] Implementation attempt {attempt}/{MAX_ATTEMPTS} for {path}")
+            code = self._call_hermes(code_prompt, max_tokens=600)
+            if not code or len(code.strip()) < 20:
+                last_error = "Hermes generated empty code"
+                continue
 
-        # Reload if it's a tool
-        reload_result = fc_reload_tool(path)
-        logger.info(f"[SIE] Implementation: {reload_result[:100]}")
+            # Strip markdown fences
+            code = re.sub(r'^```python\n?|^```\n?|```$', '', code.strip(), flags=re.MULTILINE).strip()
 
-        return True, f"Implemented: {write_result[:80]}"
+            # 1. Write (syntax-checked by write_code)
+            write_result = fc_write_code(path, code)
+            if "ERROR" in write_result or "REFUSED" in write_result:
+                last_error = write_result
+                logger.warning(f"[SIE] Attempt {attempt} write failed: {last_error[:80]}")
+                continue
+
+            # 2. Import test — catches missing deps, bad imports
+            module_name = path.replace("/", ".").replace(".py", "")
+            import_test = fc_run_python(
+                f"import importlib, sys\n"
+                f"sys.path.insert(0, '.')\n"
+                f"spec = importlib.util.spec_from_file_location('_test_mod', '{path}')\n"
+                f"mod = importlib.util.module_from_spec(spec)\n"
+                f"spec.loader.exec_module(mod)\n"
+                f"print('IMPORT_OK')"
+            )
+            if "IMPORT_OK" not in import_test:
+                # Extract the actual error line
+                error_lines = [l for l in import_test.split('\n') if 'Error' in l or 'error' in l]
+                last_error = error_lines[0] if error_lines else import_test[:150]
+                logger.warning(f"[SIE] Attempt {attempt} import failed: {last_error[:80]}")
+                continue
+
+            # 3. Reload into live registry
+            reload_result = fc_reload_tool(path)
+            if "ERROR" in reload_result:
+                last_error = reload_result
+                logger.warning(f"[SIE] Attempt {attempt} reload failed: {last_error[:80]}")
+                continue
+
+            # All checks passed
+            logger.info(f"[SIE] Implementation OK on attempt {attempt}: {path}")
+            return True, f"OK (attempt {attempt}): {write_result[:60]}"
+
+        # All attempts exhausted
+        logger.error(f"[SIE] All {MAX_ATTEMPTS} attempts failed for {path}. Last error: {last_error[:100]}")
+        return False, f"Failed after {MAX_ATTEMPTS} attempts: {last_error[:80]}"
+
 
     def _revert(self, proposal: Dict, backup: Optional[str]):
         """Revert a failed modification using backup content."""
