@@ -319,8 +319,14 @@ def read_status() -> Dict[str, Any]:
 # ── Flask App ─────────────────────────────────────────────────────────
 
 def create_app():
+    import sys
     from flask import Flask, jsonify, request, send_from_directory
-    from dashboard.dashboard_comms import get_comms
+    # Support both: python dashboard/dashboard.py (standalone) and import as package
+    try:
+        from dashboard.dashboard_comms import get_comms
+    except ModuleNotFoundError:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dashboard_comms import get_comms
 
     app = Flask(__name__, static_folder=None)
     tailer = LogTailer(LOG_PATH)
