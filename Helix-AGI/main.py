@@ -136,6 +136,7 @@ try:
     from core.fitness_evaluator import init_evaluator
     from core.self_improvement_engine import init_engine as init_sie
     from training.self_trainer import init_trainer
+    from core.context_window_manager import init_manager as init_ctx_mgr
     _SELF_EVOLVE_AVAILABLE = True
 except ImportError as _se_err:
     _SELF_EVOLVE_AVAILABLE = False
@@ -538,7 +539,14 @@ def setup_helix(data_dir: str = "data"):
         try:
             from core.post_pulse_hooks import register_hook as _rh
 
-            # 1. Evolution Journal
+            # 0. Context Window Manager — MUST be first hook (keeps KV flat)
+            ctx_mgr = init_ctx_mgr(session=pulse_loop._chat)
+            def _ctx_hook(context, cm=ctx_mgr):
+                pulse_num = getattr(context, "pulse_count", 0)
+                cm.on_pulse(pulse_num)
+            _rh(_ctx_hook, name="context_window_manager")
+            print(f"  Context Window Manager: active (MAX_HOT_TURNS=6, compress every 4, reset every 500)")
+
             evo_journal = init_journal(data_dir=data_path)
             print(f"  Evolution Journal: {evo_journal.get_stats()['total']} entries loaded")
 

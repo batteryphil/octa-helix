@@ -192,7 +192,7 @@ class HermesToolSession:
     """
 
     is_non_fc_model = True
-    MAX_HISTORY_TURNS = 12
+    MAX_HISTORY_TURNS = 6    # lowered from 12 — context_window_manager handles compression
     MAX_NEW_TOKENS    = 512
 
     def __init__(
