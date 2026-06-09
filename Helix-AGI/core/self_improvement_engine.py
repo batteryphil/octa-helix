@@ -83,6 +83,9 @@ class SelfImprovementEngine:
         self._last_user_activity = time.time()
         self._cycle_count = 0
         self._last_reflection: Optional[Dict] = None   # most recent strategic review
+        # paths → cycle# when they last returned Δ0.0 — blocked for ZERO_DELTA_COOLDOWN cycles
+        self._zero_delta_cooldown: Dict[str, int] = {}
+        ZERO_DELTA_COOLDOWN = 5   # cycles to block a path after it produces no fitness gain
 
     def set_pulse_loop(self, pl):
         self._pulse_loop = pl
@@ -158,13 +161,27 @@ class SelfImprovementEngine:
             recent = self._journal.get_recent(20)
             already_written = list({e["path"] for e in recent if e.get("path")})
 
+        # Paths cooled off: same file returned Δ0.0 recently — skip for N cycles
+        ZERO_DELTA_COOLDOWN = 5
+        cooled_off = {
+            path for path, blocked_at in self._zero_delta_cooldown.items()
+            if (self._cycle_count - blocked_at) < ZERO_DELTA_COOLDOWN
+        }
+        blocked_paths = set(already_written) | cooled_off
+
         already_note = ""
-        if already_written:
+        if blocked_paths:
             already_note = (
                 "\nIMPORTANT: You have ALREADY modified these paths — do NOT propose them again:\n"
-                + "\n".join(f"  - {p}" for p in already_written)
-                + "\nPropose something COMPLETELY DIFFERENT.\n"
+                + "\n".join(f"  - {p}" for p in sorted(blocked_paths))
+                + "\nPropose something COMPLETELY DIFFERENT from the list above.\n"
             )
+            if cooled_off:
+                already_note += (
+                    f"\nThese paths produced ZERO fitness gain and are on cooldown (avoid for {ZERO_DELTA_COOLDOWN} cycles):\n"
+                    + "\n".join(f"  - {p}" for p in sorted(cooled_off))
+                    + "\n"
+                )
 
         # Inject last strategic reflection to guide direction
         reflection_note = ""
@@ -193,14 +210,17 @@ Available self-modification tools:
 
 Safe directories for new files: tools/, core/, brain/, memory/, training/, tests/
 
-Ideas to consider (pick the most impactful ONE not yet done):
-- tools/url_reader.py — fetch and parse web page content
-- tools/file_search.py — grep/search files in the project
-- tools/memory_summarizer.py — compress old memories to save context
-- tools/task_tracker.py — track in-progress goals across sessions
-- tools/system_health.py — check CPU/RAM/disk/GPU usage
-- core/belief_pruner.py — remove low-confidence stale beliefs
-- tools/note_taker.py — persistent scratchpad for ideas
+Ideas to consider (pick the most impactful ONE not yet done — all basic tools/* are already built):
+- training/experience_collector.py — improve quality filtering for LoRA training tuples
+- core/belief_graph.py — graph relationships between beliefs for better reasoning
+- tools/performance_benchmark.py — benchmark response quality over time with scoring
+- tools/dependency_checker.py — scan tool imports and auto-install missing packages
+- tools/web_research.py — multi-page research: search + read + summarize findings
+- core/goal_tracker.py — persistent goal hierarchy with sub-goal decomposition
+- tools/code_reviewer.py — analyse own tool code for quality and suggest refactors
+- training/lora_trigger.py — check experience_tuples.jsonl count and trigger fine-tuning
+- core/attention_director.py — bias future proposals toward high-fitness topic areas
+- tools/self_diagnostic.py — run all tools with sample inputs, report pass/fail rates
 
 Respond with ONLY valid JSON in this exact format:
 {{
@@ -464,6 +484,11 @@ Fix the error. Key rules:
                 tags=proposal.get("tags", []),
             )
             self._journal.record(entry)
+
+            # Track zero-delta paths — block them for next ZERO_DELTA_COOLDOWN cycles
+            if abs(verdict.get("delta", 0.0)) < 0.0001 and committed:
+                self._zero_delta_cooldown[path] = self._cycle_count
+                logger.info(f"[SIE] Zero-delta cooldown set for {path} (cycle {self._cycle_count})")
 
     def _reflect_on_progress(self):
         """
