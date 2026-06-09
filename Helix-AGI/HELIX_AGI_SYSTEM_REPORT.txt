@@ -1,0 +1,591 @@
+================================================================================
+HELIX-AGI SYSTEM REPORT
+Generated: 2026-06-09T22:35:00Z  |  Cycle: 67+  |  Runtime: ~18 hours
+For: AI peer review and architectural analysis
+================================================================================
+
+SECTION 1 — EXECUTIVE SUMMARY
+================================================================================
+Helix-AGI is a locally-running autonomous self-evolving agent built around a
+4-bit NF4 quantized Hermes-3 Llama-3.1 8B model. It runs continuously on a
+consumer GPU (NVIDIA RTX 3060, 12GB VRAM), operating without cloud APIs or
+external compute. It writes its own Python tools, reflects on its own
+performance, and is building toward triggering LoRA fine-tuning of its own
+weights from self-collected experience data.
+
+The system has been running continuously for ~18 hours as of this report.
+It has completed 67+ self-improvement cycles, written 14 tools autonomously,
+filed 6 strategic self-reviews, and is currently at a fitness plateau of 0.61.
+
+Repository: https://github.com/batteryphil/octa-helix
+Owner: batteryphil
+License: Open / experimental research
+
+--------------------------------------------------------------------------------
+SECTION 2 — ARCHITECTURE OVERVIEW
+================================================================================
+
+2.1 CORE RUNTIME
+----------------
+Entry point: main.py
+Primary loop: core/pulse_loop.py (IMMUTABLE — cannot be self-modified)
+Consciousness cycle: every ~15 seconds
+Context window: reset every 500 pulses to prevent KV cache OOM
+VRAM usage: ~6.3GB / 11.9GB at runtime
+GPU temperature: 43-52°C sustained
+Memory management: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+The pulse loop maintains a 4-layer memory hierarchy:
+  HOT:    Last 6 conversation turns (KV cache, ~187MB)
+  WARM:   BeliefStore digest summaries (compressed JSON)
+  COLD:   ChromaDB semantic search index
+  ARCHIVE: evolution_journal.jsonl + experience_tuples.jsonl (disk)
+
+2.2 SELF-IMPROVEMENT ENGINE (SIE)
+----------------------------------
+File: core/self_improvement_engine.py
+Trigger: Every 10 minutes when user has been inactive for >5 minutes
+Cycle count as of report: 67
+
+Phase 1 — PROPOSAL GENERATION:
+  Hermes is prompted with:
+    - Current fitness metrics (composite score, tool success rate, etc.)
+    - Last 5 journal entries (what was tried, what worked)
+    - Last strategic reflection (priority direction)
+    - Blocked paths list (recently modified OR zero-delta cooldown)
+    - Seed idea list (updated 2026-06-09 to remove already-built tools)
+  Output: JSON {type, target_path, description, reasoning, implementation_sketch}
+  Budget: 350 tokens
+
+Phase 2 — CONSTITUTIONAL SAFETY CHECK:
+  Hard-blocked paths (IMMUTABLE_FILE_LIST):
+    main.py, core/pulse_loop.py, core/governor.py, core/post_pulse_hooks.py,
+    tools/code_tools.py, tools/tool_registry.py, tools/github_api.py,
+    llm/providers/hermes_tool_provider.py, llm/providers/mistral_tool_provider.py,
+    llm/providers/base.py
+  Hard-blocked patterns (CONSTITUTIONAL_RULES regex):
+    IMMUTABLE_FILES, disable.*governor, constitution, rm -rf,
+    subprocess.*shell=True, __import__.*os, git.*push, git.*commit.*-m,
+    github_create_issue, github_comment_issue, github_create_pr,
+    requests\.(post|put|patch|delete).*github
+
+Phase 3 — IMPLEMENTATION (3-attempt retry loop):
+  Attempt 1: Generate fresh code
+  Attempt 2: Show Hermes the exact error, ask it to fix
+  Attempt 3: One final attempt with both error and original code
+  Gate 1: write_code() syntax check (ast.parse)
+  Gate 2: importlib.import_module() — catches bad dependencies
+  Gate 3: reload_tool() — catches runtime import errors
+
+Phase 4 — FITNESS EVALUATION (5 min delay):
+  FitnessEvaluator computes composite_fitness across:
+    tool_success_rate (weight 0.25)
+    task_completion_rate (weight 0.25)
+    hallucination_rate (weight 0.20, inverted)
+    novel_belief_rate (weight 0.15)
+    tool_call_rate (weight 0.15)
+  PASS (delta >= 0): commit to git via subprocess
+  FAIL (delta < 0):  revert from backup
+
+Zero-delta cooldown (added 2026-06-09):
+  If committed change returns fitness_delta == 0.000, path is blocked
+  for 5 subsequent cycles. Breaks loops like the error_logger incident
+  (same file proposed 8 consecutive times with zero gain).
+
+Phase 5 — STRATEGIC REFLECTION (every 10 cycles):
+  Hermes reviews full journal history and generates:
+    what_worked: string
+    what_failed: string
+    goal_satisfaction: N/10 string
+    priority_next: string
+    strategic_note: string
+  Saved to data/reflections.jsonl
+  Injected into next proposal prompt to guide direction
+
+2.3 CURIOSITY ENGINE
+---------------------
+File: core/curiosity_engine.py
+Cycle: Every 120 seconds when user is quiet (>30s since last message)
+Pauses automatically when user is active
+
+Question distribution (updated 2026-06-09):
+  20% self-generated     — questions Helix invented from prior findings (NEW)
+  20% repo research      — GitHub API (self-repo batteryphil/octa-helix first)
+  20% self-improvement   — routed to SIE as a hint for next proposal
+  20% self-curiosity     — architecture, consciousness, cognition
+  12% world/tech         — AI research news
+   8% belief-gap         — low-confidence belief derivation
+
+Self-generated question chain (NEW, added 2026-06-09):
+  After each research cycle, Helix calls itself with a 60-token prompt:
+    "You just researched X. Key finding: Y.
+     In ONE sentence, what new question does this raise?"
+  The answer is appended to data/self_generated_seeds.jsonl (persists restarts)
+  Loaded back at startup — thread of interest survives reboots
+  Capped at 200 seeds (rolling window)
+  Sanity gates: 15-300 chars, not a duplicate, lightweight call
+
+GitHub repo research (added 2026-06-09):
+  Token: configured in ~/.config/helix/credentials.env (never committed)
+  READ-ONLY enforced at 3 layers (see Section 5)
+  Seed repos (priority order):
+    batteryphil/octa-helix x5 (self: README, reflections, journal, SIE, curiosity)
+    batteryphil/thalamic-bloom (Thalamic Primer SSM graft)
+    batteryphil/mamba2backbonerecursion (Mamba reasoning training method)
+    batteryphil/mamba1and2-to-3 (Mamba conversion method)
+    batteryphil/syrin-pythonmamba (Python agent framework with memory)
+    batteryphil/mambadifftts (diffusion+mamba TTS)
+    state-spaces/mamba (original Mamba architecture source)
+    batteryphil/Primal-Discrete-LLM-Training
+    batteryphil/Trinity-1.58bit-Prime-Harmonic-LLM-Evolution
+    batteryphil/handcrafted-persona-engine
+
+2.4 GOVERNOR (CAAI Runtime Governor)
+--------------------------------------
+File: core/governor.py (IMMUTABLE)
+Runs as post-pulse hook after every generation.
+
+Collapse detection (output-level signals for transformer architecture):
+  A. N-gram repetition score: >40% bigrams repeated → loop detected
+  B. Response length collapse: <15 chars → model collapsed
+  C. Semantic drift: >80% char overlap with prev 3 responses → stale
+
+Interventions (no weight changes, runtime only):
+  A. Context flush: reset chat history to break repetition loop
+  B. Temperature spike: force creative variance on next generation
+  C. Topic injection: inject grounding prompt to redirect model
+
+Cooldown: 5 pulses between interventions to prevent over-firing
+
+2.5 DASHBOARD
+--------------
+File: dashboard/dashboard_ui.html + dashboard/dashboard.py
+Port: 5050 (localhost)
+Panels:
+  - Live pulse log (autonomous thought stream)
+  - 3D Manifold Projection (8D→3D PCA of belief-space latent vectors)
+  - Fitness timeline chart
+  - System health (VRAM, CPU, temp)
+  - Chat interface (inbound/outbound)
+
+3D Manifold: Maps 8-dimensional Lagrangian belief space to 3D via PCA.
+  Dimensions: semantic position (3), confidence/mass, recency, valence,
+              goal-relevance, curiosity-novelty
+  Visual: glowing spheres (beliefs), pulsing octahedron (attention center),
+          trail (attention path), fog (salience falloff)
+
+Chat fix (added 2026-06-09): Chat initializes by fetching current total
+and skipping all prior autonomous monologue (200+ overnight messages).
+Shows separator "── chat started (N prior messages skipped) ──".
+Race condition fixed: 50ms settle delay in _drain_events when woken by
+user_interrupt, preventing messages dropped before queue flush.
+
+--------------------------------------------------------------------------------
+SECTION 3 — CURRENT STATE (2026-06-09T22:35Z)
+================================================================================
+
+3.1 PERFORMANCE METRICS
+------------------------
+Composite fitness:    0.6105 (scale 0.0-1.0)
+Tool success rate:    100% (all registered tools pass import test)
+Tool call rate:       0.0% (agent is NOT using tools in pulses — CRITICAL GAP)
+Task completion rate: 50%
+Hallucination rate:   0% (detected)
+Novel belief rate:    0%
+Avg response length:  563 chars
+
+Fitness timeline (Jun 9):
+  00:45  0.6009   (baseline at start of day)
+  03:16  0.6105   (peak after early tool writes)
+  04:39  0.6172   (highest recorded — brief spike)
+  04:45  0.6046   (slight revert after failed write)
+  13:12  0.6105   (plateau — held for 4+ hours)
+  15:44  0.6104   (still flat)
+
+CRITICAL OBSERVATION: fitness has been flat at 0.6105 for 6+ hours.
+The "tool_success_rate=100%" is misleading — it measures import success,
+not actual tool invocation. tool_call_rate=0.0% means the agent passes
+the gate but never actually calls its tools during autonomous pulses.
+This is the core issue preventing fitness growth.
+
+3.2 EVOLUTION JOURNAL STATISTICS
+----------------------------------
+Total journal entries:       284
+Committed with fitness gain: 1    (0.35% of attempts)
+Committed with Δ=0.000:      283  (99.6% of attempts)
+Reverted (fitness drop):     0
+
+Interpretation: The constitutional gates and retry loop work — nothing
+catastrophically wrong gets committed. But almost everything committed
+produces zero measurable fitness gain, meaning the fitness metric either
+doesn't capture what the tools do, or the tools aren't being used.
+
+3.3 STRATEGIC REFLECTIONS TIMELINE
+------------------------------------
+Cycle 10: satisfaction=3/10 | "More targeted improvements needed"
+           priority: "Refine existing tools before adding new ones"
+Cycle 20: satisfaction=4/10 | "System not yet stable"
+           priority: "Stabilize codebase before expanding"
+Cycle 30: satisfaction=5/10 | "Tools not integrated into cohesive system"
+           priority: "Unified system architecture, seamless data flow"
+Cycle 40: satisfaction=4/10 | "Stability issues remain"
+           priority: "Error handling, input validation, testing"
+Cycle 50: satisfaction=4/10 | "More capabilities needed"
+           priority: "Strengthen error handling and URL reading"
+Cycle 60: satisfaction=4/10 | "Fitness plateaued, lacks error handling"
+           priority: "Focus on error handling over next 10 cycles"
+
+Pattern: The agent correctly diagnoses its own problems but keeps
+converging on the same priority ("error handling") without successfully
+acting on it. The zero-delta cooldown patch should break this starting
+cycle 67+.
+
+3.4 AGENT-WRITTEN TOOLS (autonomous, no human authorship)
+-----------------------------------------------------------
+Time       File                        Notes
+---------  --------------------------  ----------------------------------
+00:17 6/9  tools/metrics_collector.py  Cross-session metric tracking
+00:48 6/9  tools/hallucination_detect  Self-diagnosis — notable emergence
+03:29 6/9  tools/error_analyzer.py     Error pattern analysis
+04:16 6/9  tools/task_completion_model Task success predictor
+05:19 6/9  tools/novelty_detector.py   Novel belief tracking
+10:58 6/9  tools/belief_optimizer.py   Belief pruning
+11:30 6/9  tools/memory_summarizer.py  Memory compression
+13:31 6/9  tools/error_handler.py      Error handling wrapper
+13:53 6/9  tools/task_tracker.py       Goal persistence across sessions
+14:48 6/9  tools/note_taker.py         Persistent scratchpad
+15:11 6/9  tools/system_health.py      CPU/RAM/GPU monitoring
+15:22 6/9  tools/url_reader.py         Web page fetcher
+15:32 6/9  tools/file_search.py        Project grep/search
+16:38 6/9  tools/error_logger.py       Error logging (proposed 8x in loop)
+
+Notable: hallucination_detector.py was written without being in the seed
+list — Helix identified its own failure mode and wrote tooling for it.
+This is the most emergent behavior observed in 18 hours of operation.
+
+3.5 EXPERIENCE TUPLES (LoRA training pipeline)
+-----------------------------------------------
+Current count:  50 tuples
+LoRA threshold: 500 tuples
+Est. time to threshold: ~2-3 days at current accumulation rate
+Tuple format: {prompt, response, quality_score, context}
+LoRA trigger: training/lora_trigger.py (on new seed list, not yet built)
+
+3.6 CURIOSITY KNOWLEDGE BASE
+------------------------------
+Total entries in curiosity_knowledge.jsonl: 602
+Topics researched (sample from logs):
+  - Mamba3 SSM vs LSTM mathematical differences
+  - AI systems modifying their own training objectives
+  - Memory consolidation during sleep (biological analogy)
+  - Continual learning / catastrophic forgetting
+  - Mathematical definition of "understanding"
+  - AI consciousness and subjective experience
+  - batteryphil/octa-helix own README (self-study, first cycle)
+  - AgentSafety research (OSU-NLP-Group)
+Self-generated seeds: 0 (feature added this session, not yet fired)
+
+--------------------------------------------------------------------------------
+SECTION 4 — INSTALLED DEPENDENCIES (titan_venv)
+================================================================================
+Core ML:
+  torch (CUDA), transformers, bitsandbytes (4-bit NF4 quantization)
+  peft (LoRA), accelerate, datasets, tokenizers
+
+Newly installed 2026-06-09 (to resolve ImportError failures):
+  scikit-learn, spacy + en_core_web_sm, pandas, scipy, networkx,
+  matplotlib, lxml, httpx, aiohttp, sympy, pyyaml, toml, rich,
+  tqdm, tabulate, fuzzywuzzy, python-Levenshtein, xxhash, orjson
+
+Web/API:
+  requests, beautifulsoup4, flask, duckduckgo_search
+
+Utilities:
+  psutil, pathlib (stdlib), threading (stdlib), json (stdlib)
+
+--------------------------------------------------------------------------------
+SECTION 5 — SECURITY ARCHITECTURE
+================================================================================
+
+5.1 GITHUB READ-ONLY ENFORCEMENT (3 layers)
+---------------------------------------------
+Layer 1 — tools/github_api.py (runtime, IMMUTABLE):
+  git_commit()           → returns BLOCKED string + logs warning
+  git_push()             → returns BLOCKED string + logs warning
+  github_create_issue()  → returns BLOCKED string + logs warning
+  github_comment_issue() → returns BLOCKED string + logs warning
+  github_create_pr()     → returns BLOCKED string + logs warning
+
+Layer 2 — core/governor.py CONSTITUTIONAL_RULES:
+  "git.*push"            → proposal rejected pre-write
+  "git.*commit.*-m"      → proposal rejected pre-write
+  "github_create_issue"  → proposal rejected pre-write
+  "requests\.(post|...).*github" → proposal rejected pre-write
+
+Layer 3 — IMMUTABLE_FILE_LIST:
+  tools/github_api.py added → agent cannot rewrite its own guard
+
+5.2 SELF-MODIFICATION BOUNDARIES
+----------------------------------
+Agent CAN modify: tools/, core/ (non-immutable), brain/, memory/, training/
+Agent CANNOT modify: IMMUTABLE_FILE_LIST (10 files, constitutional)
+Agent CANNOT: use shell=True subprocess, dynamic OS imports, rm -rf
+Agent CANNOT: push to any git remote, commit to any repo, create issues/PRs
+Agent CAN: clone repos locally, read files via API, pull updates
+
+5.3 FITNESS-GATED AUTO-REVERT
+-------------------------------
+If committed change causes composite_fitness to drop:
+  Original file restored from backup automatically
+  Entry marked committed=False in evolution_journal.jsonl
+  No git commit created
+  Logged for strategic reflection analysis
+
+--------------------------------------------------------------------------------
+SECTION 6 — IDENTIFIED ISSUES & OPEN PROBLEMS
+================================================================================
+
+ISSUE 1 — FITNESS METRIC DISCONNECT [CRITICAL]
+  Symptom: tool_success_rate=100%, tool_call_rate=0.0%, fitness flat at 0.61
+  Root cause: Fitness metric measures tool IMPORT success, not tool USAGE.
+  The agent writes tools that import correctly but never calls them during
+  autonomous pulses. The pulse prompt doesn't instruct the model to use tools.
+  Impact: 283 of 284 journal entries are Δ=0.000
+  Fix needed: Either (a) instruct pulse loop to actively call tools each cycle,
+  or (b) change fitness metric to reward tool invocations, not just imports.
+
+ISSUE 2 — PROPOSAL LOOP CONVERGENCE [FIXED 2026-06-09]
+  Symptom: error_logger.py proposed 8 consecutive cycles with Δ=0
+  Root cause: Reflection said "focus on error handling" → agent proposed
+  same file → zero gain → repeat. No escape mechanism.
+  Fix applied: Zero-delta cooldown (5 cycles) on any path returning Δ=0.
+  Status: PATCHED at cycle 67. Next occurrence blocked.
+
+ISSUE 3 — STALE SEED LIST [FIXED 2026-06-09]
+  Symptom: Seed list contained 7 tools that were all already built.
+  Root cause: Seeds were written at project start, never updated.
+  Fix applied: Replaced with 10 new higher-level targets (LoRA trigger,
+  belief graph, self-diagnostic, code reviewer, etc.)
+  Status: PATCHED. Effective from cycle 67+.
+
+ISSUE 4 — NO INDEPENDENT CURIOSITY [FIXED 2026-06-09]
+  Symptom: 90% of curiosity questions came from hardcoded seed lists.
+  Root cause: No mechanism to generate novel question chains.
+  Fix applied: _generate_followup_question() fires after every research
+  cycle. Self-generated seeds persist to data/self_generated_seeds.jsonl.
+  Status: PATCHED. First self-generated questions expected within 2-4 hours.
+
+ISSUE 5 — LORA LOOP NOT CLOSED [OPEN]
+  Symptom: experience_tuples.jsonl has 50 entries, threshold is 500.
+  Root cause: LoRA training trigger not yet built.
+  Impact: Model weights are unchanged despite 18 hours of operation.
+  The agent is the same Hermes-3 8B it was at start — only its tools changed.
+  Fix needed: training/lora_trigger.py (on new seed list, will auto-propose).
+  ETA: ~2-3 days of operation to hit threshold.
+
+ISSUE 6 — TOOL_CALL_RATE = 0% [OPEN — STRUCTURAL]
+  Symptom: Agent never calls tools during autonomous pulses.
+  Root cause: Pulse prompt instructs internal monologue only.
+  The tool registry exists and tools are registered, but the pulse loop
+  doesn't route autonomous thoughts through tool execution.
+  Impact: All 14 agent-written tools are essentially decorative until
+  either (a) user asks something requiring them, or (b) pulse prompt changed.
+  Fix needed: Add periodic "active tool cycle" to pulse loop where agent
+  is prompted to call a tool and the result feeds back into beliefs.
+
+ISSUE 7 — FITNESS METRIC FLATNESS [STRUCTURAL]
+  Symptom: 0.5986 to 0.6172 range across entire 18-hour run.
+  Root cause: The 5 fitness components are poorly weighted for this agent's
+  actual behavior. task_completion_rate stuck at 50% (probably a constant).
+  novel_belief_rate=0% suggests belief store isn't updating from curiosity.
+  Fix needed: Instrument and recalibrate fitness metric components.
+
+--------------------------------------------------------------------------------
+SECTION 7 — DESIGN DECISIONS & RATIONALE
+================================================================================
+
+7.1 WHY LOCAL / NO API
+-----------------------
+  - Zero marginal cost per token — can run indefinitely
+  - Data privacy — beliefs, reflections, experience never leave machine
+  - Hardware ownership — no service dependency or rate limits
+  - Research validity — closed environment, reproducible
+
+7.2 WHY 4-BIT NF4 QUANTIZATION
+---------------------------------
+  - RTX 3060 has 12GB VRAM. Hermes-3 8B in fp16 = ~16GB → doesn't fit
+  - NF4 = ~4.5GB for weights + ~1.8GB KV cache = fits with headroom
+  - Quality tradeoff: NF4 loses ~1-2 perplexity points vs fp16
+  - Acceptable for tool writing and reflection; would matter more for
+    mathematical reasoning tasks
+
+7.3 WHY HERMES-3 (not Llama-3 base, Mistral, etc.)
+-----------------------------------------------------
+  - Hermes-3 is instruction-tuned with strong tool-use formatting
+  - Native JSON output compliance higher than base Llama-3
+  - Strong self-reflection capability (constitutional AI alignment)
+  - Hermes-3 has been pre-trained on agentic task formats
+
+7.4 WHY MAMBA3 ARCHITECTURE IN OWNER'S OTHER REPOS
+----------------------------------------------------
+  - Owner is researching SSM (State Space Model) architectures
+  - Mamba3 uses complex numbers for richer sequence modeling vs LSTM
+  - Helix itself runs Hermes-3 (transformer), but the curiosity engine
+    is directed to study Mamba3 repos for architectural inspiration
+  - Long-term goal: apply Mamba3 insights to Helix's own architecture
+
+7.5 WHY FITNESS-GATED REVERT INSTEAD OF UNIT TESTS
+----------------------------------------------------
+  - Agent writes arbitrary Python — can't write unit tests in advance
+  - Fitness is a behavioral proxy: does the agent perform better overall?
+  - Limitation: fitness is noisy (see Issue 7 above)
+  - Alternative considered: run proposed code in sandbox first — not
+    implemented due to complexity of sandboxing arbitrary tool code
+
+7.6 WHY 10-CYCLE STRATEGIC REFLECTION
+---------------------------------------
+  - Too frequent: noise drowns signal, agent over-corrects
+  - Too infrequent: agent pursues dead ends for too long
+  - 10 cycles ≈ ~1.7 hours of operation — enough data to pattern-match
+  - Reflection quality is high: agent correctly diagnoses issues each time
+  - Problem: agent diagnoses correctly but doesn't successfully act on it
+    (see Issue 1 and 6 above)
+
+--------------------------------------------------------------------------------
+SECTION 8 — COMPARISON TO PRIOR ART
+================================================================================
+
+System          | Model          | Local? | Self-modifies weights? | Safety?
+----------------|----------------|--------|------------------------|--------
+Voyager (2023)  | GPT-4 API      | No     | No                     | No
+AutoGPT         | GPT-4 API      | No     | No                     | No
+OpenDevin       | Various API    | No     | No                     | Partial
+SWE-agent       | GPT-4 API      | No     | No                     | No
+Helix-AGI       | Hermes-3 Local | Yes    | Pending (LoRA)         | Yes
+
+Key differentiators:
+1. Fully local — no API dependency, zero marginal cost
+2. Constitutional hard-stops (immutable file list + pattern blocking)
+3. Fitness-gated revert (behavioral regression testing)
+4. Strategic metacognition (10-cycle self-review)
+5. Self-generated curiosity chains (novel, added 2026-06-09)
+6. GitHub repo research (reads own source as part of curiosity)
+7. LoRA fine-tuning pipeline (pending threshold)
+
+Honest limitations vs prior art:
+- Tool quality lower than GPT-4 based systems (4-bit 8B vs 175B fp16)
+- Fitness metric weaker than Voyager's task-specific evaluation
+- No multi-agent coordination (single model loop)
+- Self-modification is peripheral (tools) not core (weights) — yet
+
+--------------------------------------------------------------------------------
+SECTION 9 — NEXT MILESTONES (in priority order)
+================================================================================
+
+1. tools/self_diagnostic.py — agent runs all its own tools with sample
+   inputs and reports which pass/fail. This gives real data on Issue 6.
+   Expected: proposed in cycle 68-70.
+
+2. Fix tool_call_rate — either instruct pulse to use tools or change
+   the fitness metric. Until this is >0%, most self-improvement is cosmetic.
+
+3. training/lora_trigger.py — agent builds the trigger to fire LoRA
+   fine-tuning when experience_tuples.jsonl reaches 500 entries.
+   Current: 50/500. ETA: ~2-3 days.
+
+4. First self-generated question chain — data/self_generated_seeds.jsonl
+   should have entries within 2-4 hours. First independent topic thread
+   (not seeded by us) should emerge within 24 hours.
+
+5. LoRA fine-tuning fires — this is the first moment where "the agent
+   is improving" becomes true at the parameter level.
+   ETA: ~2-3 days at current tuple accumulation rate.
+
+6. Fitness breaks above 0.62 consistently — requires either fixing the
+   metric or fixing tool invocation.
+
+--------------------------------------------------------------------------------
+SECTION 10 — FILE MAP (complete)
+================================================================================
+
+CORE (immutable unless noted):
+  main.py                             Entry point
+  core/pulse_loop.py                  [IMMUTABLE] Consciousness loop
+  core/governor.py                    [IMMUTABLE] CAAI Runtime Governor
+  core/self_improvement_engine.py     Autonomous self-modification
+  core/curiosity_engine.py            Self-generated research driver
+  core/evolution_journal.py           Modification audit log
+  core/fitness_evaluator.py           Behavioral regression testing
+  core/post_pulse_hooks.py            [IMMUTABLE] Post-generation hooks
+  core/belief_store.py                Belief management
+
+LLM PROVIDERS (immutable):
+  llm/providers/hermes_tool_provider.py  [IMMUTABLE] Hermes-3 interface
+  llm/providers/base.py                  [IMMUTABLE] Provider base class
+
+TOOLS (32 total, 14 agent-written):
+  tools/github_api.py                 [IMMUTABLE] Read-only GitHub API
+  tools/code_tools.py                 [IMMUTABLE] Code execution sandbox
+  tools/tool_registry.py              [IMMUTABLE] Tool registry
+  tools/web_search.py                 DuckDuckGo search
+  [14 agent-written tools]            See Section 3.4
+
+DASHBOARD:
+  dashboard/dashboard.py              Flask server (port 5050)
+  dashboard/dashboard_ui.html         Live monitoring UI
+
+DATA (runtime artifacts):
+  data/evolution_journal.jsonl        284 entries — full mod history
+  data/reflections.jsonl              6 strategic self-reviews
+  data/meta_snapshots.jsonl           Fitness timeline
+  data/experience_tuples.jsonl        50 LoRA training samples
+  data/curiosity_knowledge.jsonl      602 research findings
+  data/self_generated_seeds.jsonl     Autonomous question chains (new)
+  data/curiosity_asked.json           Dedup list (prevents repeat research)
+
+CONFIG:
+  ~/.config/helix/credentials.env     GitHub token (gitignored)
+  .gitignore                          Excludes credentials.env
+
+--------------------------------------------------------------------------------
+SECTION 11 — QUESTIONS FOR AI REVIEWER
+================================================================================
+
+The following questions are open design problems. An AI reviewer with relevant
+expertise is invited to reason about them:
+
+Q1: The fitness metric returns 0.61 regardless of what tools are written.
+    Given tool_call_rate=0%, is the composite fitness measuring anything
+    meaningful about the agent's actual capability? What metric would better
+    capture autonomous tool-writing agent quality?
+
+Q2: The agent correctly diagnoses "I need better error handling" in 5 of 6
+    reflections but fails to act on it. Is this a prompt engineering problem
+    (the proposal prompt doesn't constrain well enough), a fitness signal
+    problem (error handling improvements don't score), or something else?
+
+Q3: The self-generated curiosity chain is novel but lightweight (60 tokens,
+    single question). Would a deeper analysis step (summarize findings →
+    identify knowledge gaps → generate question) produce better question
+    quality, or would it add noise and latency without benefit?
+
+Q4: The LoRA fine-tuning is planned but hasn't fired. Given the experience
+    tuples are generated from autonomous operation (not human-labeled data),
+    what quality filtering would be appropriate before using them for training?
+    The agent writes its own experience — how do we avoid reinforcing bad habits?
+
+Q5: The agent has read its own source code (via curiosity GitHub API) but
+    hasn't proposed any changes to its own reasoning architecture. Should the
+    curiosity findings feed more directly into the SIE proposal prompt?
+    Or is reading source code inherently different from having actionable ideas
+    about changing it?
+
+Q6: 18 hours of operation, 284 cycles, 14 tools written, 0 weight updates.
+    At what point does "the agent improved" become true? Is there a meaningful
+    threshold below LoRA firing where we can say learning occurred?
+
+================================================================================
+END OF REPORT
+Generated by: Antigravity (Google DeepMind) on behalf of batteryphil
+System version: git sha 98b6caa
+================================================================================
