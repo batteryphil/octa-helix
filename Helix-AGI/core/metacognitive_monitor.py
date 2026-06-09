@@ -31,8 +31,8 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("helix.core.metacog")
 
-SNAPSHOT_INTERVAL = 50      # pulses between full snapshots
-MIN_PULSES_FOR_SNAPSHOT = 10
+SNAPSHOT_INTERVAL = 10      # pulses between full snapshots (was 50)
+MIN_PULSES_FOR_SNAPSHOT = 5
 
 
 @dataclass

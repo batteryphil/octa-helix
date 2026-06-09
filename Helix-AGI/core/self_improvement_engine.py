@@ -140,21 +140,42 @@ class SelfImprovementEngine:
 
         perf_text = self._monitor.format_for_context()
         journal_text = ""
+        already_written = []
         if self._journal:
             journal_text = self._journal.format_for_context(5)
+            # Deduplicate — don't re-propose paths already modified
+            recent = self._journal.get_recent(20)
+            already_written = list({e["path"] for e in recent if e.get("path")})
+
+        already_note = ""
+        if already_written:
+            already_note = (
+                "\nIMPORTANT: You have ALREADY modified these paths — do NOT propose them again:\n"
+                + "\n".join(f"  - {p}" for p in already_written)
+                + "\nPropose something COMPLETELY DIFFERENT.\n"
+            )
 
         prompt = f"""You are analyzing your own performance metrics to identify the single highest-impact self-improvement you can make right now.
 
 {perf_text}
 
 {journal_text}
-
+{already_note}
 Available self-modification tools:
 - write_code(path, content): Create or modify Python files in the project
 - run_python(code): Test code before deploying it
 - reload_tool(module_path): Hot-reload a module to activate changes
 
 Safe directories for new files: tools/, core/, brain/, memory/, training/, tests/
+
+Ideas to consider (pick the most impactful ONE not yet done):
+- tools/url_reader.py — fetch and parse web page content
+- tools/file_search.py — grep/search files in the project
+- tools/memory_summarizer.py — compress old memories to save context
+- tools/task_tracker.py — track in-progress goals across sessions
+- tools/system_health.py — check CPU/RAM/disk/GPU usage
+- core/belief_pruner.py — remove low-confidence stale beliefs
+- tools/note_taker.py — persistent scratchpad for ideas
 
 Respond with ONLY valid JSON in this exact format:
 {{
@@ -174,7 +195,6 @@ Respond with ONLY valid JSON in this exact format:
 
         # Extract JSON
         try:
-            # Try to find JSON block
             m = re.search(r'\{[^{}]*"type"[^{}]*\}', raw, re.DOTALL)
             if m:
                 return json.loads(m.group())
