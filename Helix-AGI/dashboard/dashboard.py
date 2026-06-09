@@ -379,6 +379,73 @@ def create_app():
         total = comms.get_outbound_count()
         return jsonify({"messages": messages, "total": total})
 
+    @app.route("/api/activations")
+    def api_activations():
+        """Real-time cognitive activation data for the live visualization panel."""
+        data = {
+            "fitness_history": [],   # last N composite_fitness values
+            "tool_call_rate": 0.0,
+            "tool_success_rate": 1.0,
+            "novel_belief_rate": 0.0,
+            "hallucination_rate": 0.0,
+            "last_tool": "",
+            "last_belief": "",
+            "pulse_count": 0,
+            "active_components": {},  # component → activity level 0-1
+        }
+        # Read meta_snapshots for fitness history & rates
+        snap_path = BASE_DIR / "data" / "meta_snapshots.jsonl"
+        if snap_path.exists():
+            try:
+                snaps = []
+                with snap_path.open() as f:
+                    for line in f:
+                        try: snaps.append(json.loads(line.strip()))
+                        except: pass
+                # last 30 snapshots for the waveform
+                recent = snaps[-30:]
+                data["fitness_history"] = [round(s.get("composite_fitness", 0), 4) for s in recent]
+                if snaps:
+                    last = snaps[-1]
+                    data["tool_call_rate"]     = last.get("tool_call_rate", 0)
+                    data["tool_success_rate"]  = last.get("tool_success_rate", 1)
+                    data["novel_belief_rate"]  = min(1.0, last.get("novel_belief_rate", 0) * 10)
+                    data["hallucination_rate"] = last.get("hallucination_rate", 0)
+            except Exception:
+                pass
+
+        # Parse recent log lines for last tool + belief + pulse count
+        if LOG_PATH.exists():
+            try:
+                with open(LOG_PATH, "rb") as f:
+                    f.seek(max(0, f.seek(0, 2) - 30000))
+                    tail = f.read().decode("utf-8", errors="replace")
+                for line in reversed(tail.split("\n")):
+                    if not data["last_tool"] and "FC tools used:" in line:
+                        m = re.search(r"FC tools used: \[(.+?)\]", line)
+                        if m: data["last_tool"] = m.group(1).replace("'", "").split(",")[0].strip()
+                    if not data["last_belief"] and "Belief added" in line:
+                        m = re.search(r"Belief added[^:]*: (.{0,60})", line)
+                        if m: data["last_belief"] = m.group(1).strip()
+                    if not data["pulse_count"]:
+                        m = re.search(r"Pulse (\d+)", line)
+                        if m: data["pulse_count"] = int(m.group(1))
+                    if data["last_tool"] and data["pulse_count"]:
+                        break
+            except Exception:
+                pass
+
+        # Synthetic component activity from rates
+        data["active_components"] = {
+            "Pulse Loop":    min(1.0, 0.9 if data["pulse_count"] > 0 else 0),
+            "Tool Executor": data["tool_call_rate"],
+            "Belief Store":  data["novel_belief_rate"],
+            "Curiosity":     0.7,  # always running
+            "Memory":        0.6,
+            "SIE":           0.4,
+        }
+        return jsonify(data)
+
     return app
 
 
