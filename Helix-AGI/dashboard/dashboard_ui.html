@@ -488,7 +488,9 @@ window.addEventListener('resize', () => {
 });
 
 // ── Chat System ──
-let chatOutboundTotal = 0;
+// Start at current total so we only show NEW messages after page load
+// (avoids flooding the chat with 200+ overnight autonomous thoughts)
+let chatOutboundTotal = -1;  // -1 = uninitialized, will be set on first poll
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatSender = document.getElementById('chat-sender');
@@ -529,13 +531,24 @@ chatInput.addEventListener('keydown', (e) => {
 });
 
 function pollChatOutbound() {
-  fetch(`/api/messages/outbound?since=${chatOutboundTotal}`)
+  fetch(`/api/messages/outbound?since=${chatOutboundTotal < 0 ? 999999 : chatOutboundTotal}`)
     .then(r => r.json())
     .then(data => {
+      if (chatOutboundTotal < 0) {
+        // First poll: skip history, just record current position
+        chatOutboundTotal = data.total || 0;
+        const div = document.createElement('div');
+        div.style.cssText = 'text-align:center;color:#475569;font-size:10px;padding:8px 0;border-top:1px solid #1e293b;margin-bottom:4px';
+        div.textContent = `── chat started (${chatOutboundTotal} prior messages skipped) ──`;
+        chatMessages.appendChild(div);
+        return;
+      }
       (data.messages || []).forEach(msg => {
         appendChatMsg('Helix', msg.content, 'outbound', msg.timestamp);
       });
-      chatOutboundTotal = data.total || chatOutboundTotal;
+      if (data.messages && data.messages.length > 0) {
+        chatOutboundTotal = data.total || chatOutboundTotal;
+      }
     })
     .catch(() => {});
 }
