@@ -34,6 +34,8 @@ Initializes the full cognitive architecture and runs the pulse loop:
 """
 
 import os
+# Must be set before torch is imported — reduces VRAM fragmentation on RTX 3060
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import time
 import logging
 import logging.handlers

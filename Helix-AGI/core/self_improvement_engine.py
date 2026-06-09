@@ -106,6 +106,7 @@ class SelfImprovementEngine:
         try:
             # Use the underlying model directly to avoid pulse-loop overhead
             import torch
+            torch.cuda.empty_cache()  # free fragmented VRAM before heavy generation
             tokenizer = session._tokenizer
             model = session._model
             device = session._device
@@ -125,13 +126,21 @@ class SelfImprovementEngine:
                 out = model.generate(
                     ids, max_new_tokens=max_tokens,
                     do_sample=False,
-                    pad_token_id=tokenizer.eos_token_id
+                    pad_token_id=tokenizer.eos_token_id,
+                    num_return_sequences=1,
+                    output_attentions=False,
+                    output_scores=False,
+                    return_dict_in_generate=False
                 )
             raw = tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True).strip()
             return raw
+        except torch.cuda.OutOfMemoryError as e:
+            logger.error(f"Hermes generation error (OOM): {e}")
+            torch.cuda.empty_cache()
+            return "(OOM — generation skipped)"
         except Exception as e:
             logger.error(f"[SIE] Hermes call error: {e}")
-            return ""
+            return f"(generation error: {e})"
 
     def _generate_proposal(self) -> Optional[Dict]:
         """Phase 1: Ask Hermes what to improve. Returns parsed proposal or None."""
@@ -272,7 +281,7 @@ Fix the error. Key rules:
 - Output ONLY the corrected Python code:"""
 
             logger.info(f"[SIE] Implementation attempt {attempt}/{MAX_ATTEMPTS} for {path}")
-            code = self._call_hermes(code_prompt, max_tokens=600)
+            code = self._call_hermes(code_prompt, max_tokens=350)  # 400→350: prevent OOM on RTX 3060
             if not code or len(code.strip()) < 20:
                 last_error = "Hermes generated empty code"
                 continue
