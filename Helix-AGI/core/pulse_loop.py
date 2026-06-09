@@ -815,26 +815,36 @@ class PulseLoop:
         #     every user message. Instead: if this pulse had user_message events,
         #     push the thought directly to dashboard outbound so the user always
         #     gets a response. Filter out autonomous monologue phrases.
+        #
+        #     Guard: only emit ONCE per user message (track by pulse count) to
+        #     prevent attractor-basin loops from spamming the chat window.
         has_user_event = any(
             "They said:" in e or "is talking to me" in e
             for e in events
         )
-        if has_user_event and thought:
+        already_emitted = getattr(self, "_last_user_emit_pulse", -1) == self._pulse_count - 1
+        if has_user_event and thought and not already_emitted:
             clean_thought = thought.strip().lstrip("*").strip()
-            # Skip pure monologue / tool mandate boilerplate
+            # Skip pure monologue / tool mandate boilerplate / attractor loops
             skip_phrases = [
                 "no new events",
                 "my last thought aligns",
                 "[active pulse",
                 "i'll continue monitoring",
+                "continuing to focus on",
+                "formulate a hard question",
+                "search google for the answer",
+                "i should:\n\n*1.",
             ]
             if not any(p in clean_thought.lower() for p in skip_phrases):
                 try:
                     from dashboard.dashboard_comms import get_comms
                     get_comms().push_outbound("User", clean_thought)
                     logger.info(f"[chat] Auto-emitted response to User ({len(clean_thought)} chars)")
+                    self._last_user_emit_pulse = self._pulse_count
                 except Exception as _e:
                     logger.debug(f"[chat] Auto-emit failed: {_e}")
+
 
         logger.debug(
             f"Pulse {self._pulse_count} ({self._state}): "
