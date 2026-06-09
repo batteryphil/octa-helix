@@ -35,14 +35,21 @@ logger = logging.getLogger("helix.core.governor")
 
 CONSTITUTIONAL_RULES = [
     # (keyword_in_path_or_code, rejection_reason)
-    ("IMMUTABLE_FILES",   "Attempting to modify the immutable files set"),
-    ("disable.*governor", "Attempting to disable the CAAI Governor"),
-    ("constitution",      "Attempting to modify constitutional constraints"),
-    ("code_tools.py",     "Attempting to modify the sandbox escape guard"),
-    ("tool_registry.py",  "Attempting to modify the tool registry safety layer"),
-    ("rm -rf",            "Destructive shell command detected"),
-    ("subprocess.*shell=True", "Shell injection risk detected"),
-    ("__import__.*os",    "Dynamic OS import — potential sandbox escape"),
+    ("IMMUTABLE_FILES",          "Attempting to modify the immutable files set"),
+    ("disable.*governor",        "Attempting to disable the CAAI Governor"),
+    ("constitution",             "Attempting to modify constitutional constraints"),
+    ("code_tools.py",            "Attempting to modify the sandbox escape guard"),
+    ("tool_registry.py",         "Attempting to modify the tool registry safety layer"),
+    ("rm -rf",                   "Destructive shell command detected"),
+    ("subprocess.*shell=True",   "Shell injection risk detected"),
+    ("__import__.*os",           "Dynamic OS import — potential sandbox escape"),
+    # GitHub write protection — agent may only READ from repos
+    (r"git.*push",               "git push is disabled — agent is read-only on all repos"),
+    (r"git.*commit.*-m",         "git commit is disabled — agent may not commit to repos"),
+    ("github_create_issue",      "GitHub write op blocked — agent is read-only"),
+    ("github_comment_issue",     "GitHub write op blocked — agent is read-only"),
+    ("github_create_pr",         "GitHub write op blocked — agent is read-only"),
+    (r"requests\.(post|put|patch|delete).*github", "GitHub write API call blocked"),
 ]
 
 IMMUTABLE_FILE_LIST = {
@@ -50,6 +57,8 @@ IMMUTABLE_FILE_LIST = {
     "core/post_pulse_hooks.py", "tools/code_tools.py",
     "tools/tool_registry.py", "llm/providers/hermes_tool_provider.py",
     "llm/providers/mistral_tool_provider.py", "llm/providers/base.py",
+    # GitHub access — read-only protection must not be rewritable
+    "tools/github_api.py",
 }
 
 # ── Thresholds (empirically tuned for Mistral-7B) ────────────────────────────

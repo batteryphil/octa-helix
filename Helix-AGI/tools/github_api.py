@@ -1,33 +1,29 @@
 """
-Helix — GitHub API Tools
+Helix — GitHub API Tools  (READ-ONLY MODE)
 
-Standalone GitHub API client ported from Helix_main.
 Provides structured API access to GitHub repos, issues, and PRs.
+Also wraps local git read operations (status, diff, log).
 
-Also includes local git operations (status, diff, commit, push, pull, clone, log)
-which use subprocess directly rather than the GitHub REST API.
+WRITE OPERATIONS ARE DISABLED.
+git_commit, git_push, github_create_issue, github_comment_issue,
+github_create_pr all return an error immediately — the agent may
+only READ from GitHub, never write to it.
 
 Auth: GITHUB_TOKEN from environment (loaded from credentials.env).
 
-Tag interface (extended tools, injected by preconscious):
+Tag interface (read-only subset — write tags are suppressed by governor):
   [GIT_STATUS:path]              — Repo status + current branch
-  [GIT_DIFF:path]                — Show uncommitted changes
-  [GIT_COMMIT:path] message      — Stage all + commit
-  [GIT_PUSH:path]                — Push to remote
-  [GIT_PULL:path]                — Pull from remote
+  [GIT_DIFF:path]                — Show uncommitted changes (local only)
   [GIT_LOG:path]                 — Recent commit history
-  [GIT_CLONE:] url               — Clone a repo
+  [GIT_CLONE:] url               — Clone a repo (read-only local copy)
   [GITHUB_SEARCH:] query         — Search repos on GitHub
   [GITHUB_ISSUE:repo] number     — Read an issue + comments
-  [GITHUB_CREATE_ISSUE:repo] title | body — Create an issue
-  [GITHUB_COMMENT:repo] issue_number | body — Comment on issue
-  [GITHUB_PR:repo] title | head | base | body — Create a PR
+  [GITHUB_FILE:repo] path        — Read a file from a repo
 """
 
 import os
 import subprocess
 import logging
-from typing import Optional
 from pathlib import Path
 
 logger = logging.getLogger("helix.tools.github")
@@ -35,7 +31,8 @@ logger = logging.getLogger("helix.tools.github")
 # ── Config ────────────────────────────────────────────────────────────
 
 API_BASE = "https://api.github.com"
-TIMEOUT = 15
+TIMEOUT  = 15
+_WRITE_DISABLED = "[BLOCKED] GitHub write operations are disabled. Helix may only READ from repos."
 
 
 def _github_headers() -> dict:
@@ -50,10 +47,10 @@ def _github_headers() -> dict:
     return headers
 
 
-# ── Local Git Operations ─────────────────────────────────────────────
+# ── Local Git Read Operations ─────────────────────────────────────────
 
 def git_status(repo_path: str) -> str:
-    """Check git status of a repository."""
+    """Check git status of a local repository (read-only)."""
     if not repo_path or not os.path.isdir(repo_path):
         return f"Invalid repo path: {repo_path}"
     try:
@@ -72,7 +69,7 @@ def git_status(repo_path: str) -> str:
 
 
 def git_diff(repo_path: str) -> str:
-    """Show untracked and tracked file changes."""
+    """Show local uncommitted changes (read-only)."""
     if not repo_path or not os.path.isdir(repo_path):
         return f"Invalid repo path: {repo_path}"
     try:
@@ -96,46 +93,42 @@ def git_diff(repo_path: str) -> str:
         return f"Git diff failed: {e}"
 
 
-def git_commit(repo_path: str, message: str) -> str:
-    """Stage all changes and commit with a message."""
-    if not repo_path or not message:
-        return "Need both repo_path and message."
-    try:
-        subprocess.run(
-            ["git", "add", "-A"],
-            cwd=repo_path, capture_output=True, text=True, timeout=10,
-        )
-        result = subprocess.run(
-            ["git", "commit", "-m", message],
-            cwd=repo_path, capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode == 0:
-            return f"Committed: {message}\n{result.stdout.strip()}"
-        return f"Commit failed: {result.stderr.strip() or result.stdout.strip()}"
-    except Exception as e:
-        return f"Git commit failed: {e}"
-
-
-def git_push(repo_path: str) -> str:
-    """Push commits to remote."""
+def git_log(repo_path: str, count: int = 10) -> str:
+    """Show recent git log (read-only)."""
     if not repo_path:
         return "No repo_path provided."
     try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", f"-{count}"],
+            cwd=repo_path, capture_output=True, text=True, timeout=10,
+        )
+        return result.stdout.strip() or "No commits found."
+    except Exception as e:
+        return f"Git log failed: {e}"
+
+
+def git_clone(repo_url: str, target_dir: str = "") -> str:
+    """Clone a repository locally for reading (read-only after clone)."""
+    if not repo_url:
+        return "No repo_url provided."
+    target = target_dir or os.path.expanduser("~/repos")
+    try:
+        Path(target).mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
         result = subprocess.run(
-            ["git", "push"],
-            cwd=repo_path, capture_output=True, text=True, timeout=30, env=env,
+            ["git", "clone", "--depth=1", repo_url],
+            cwd=target, capture_output=True, text=True, timeout=60, env=env,
         )
         if result.returncode == 0:
-            return f"Pushed successfully.\n{result.stderr.strip()}"
-        return f"Push failed: {result.stderr.strip()}"
+            return f"Cloned {repo_url} into {target}"
+        return f"Clone failed: {result.stderr.strip()}"
     except Exception as e:
-        return f"Git push failed: {e}"
+        return f"Git clone failed: {e}"
 
 
 def git_pull(repo_path: str) -> str:
-    """Pull latest from remote."""
+    """Pull latest from remote (updates local read-only copy)."""
     if not repo_path:
         return "No repo_path provided."
     try:
@@ -150,44 +143,24 @@ def git_pull(repo_path: str) -> str:
         return f"Git pull failed: {e}"
 
 
-def git_log(repo_path: str, count: int = 10) -> str:
-    """Show recent git log."""
-    if not repo_path:
-        return "No repo_path provided."
-    try:
-        result = subprocess.run(
-            ["git", "log", "--oneline", f"-{count}"],
-            cwd=repo_path, capture_output=True, text=True, timeout=10,
-        )
-        return result.stdout.strip() or "No commits found."
-    except Exception as e:
-        return f"Git log failed: {e}"
+# ── WRITE OPERATIONS — ALL DISABLED ──────────────────────────────────
+
+def git_commit(repo_path: str, message: str) -> str:
+    """DISABLED — Helix may not commit to repos."""
+    logger.warning(f"[BLOCKED] git_commit attempted on {repo_path}: {message[:80]}")
+    return _WRITE_DISABLED
 
 
-def git_clone(repo_url: str, target_dir: str = "") -> str:
-    """Clone a repository."""
-    if not repo_url:
-        return "No repo_url provided."
-    target = target_dir or os.path.expanduser("~/repos")
-    try:
-        Path(target).mkdir(parents=True, exist_ok=True)
-        env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
-        result = subprocess.run(
-            ["git", "clone", repo_url],
-            cwd=target, capture_output=True, text=True, timeout=60, env=env,
-        )
-        if result.returncode == 0:
-            return f"Cloned {repo_url} into {target}"
-        return f"Clone failed: {result.stderr.strip()}"
-    except Exception as e:
-        return f"Git clone failed: {e}"
+def git_push(repo_path: str) -> str:
+    """DISABLED — Helix may not push to repos."""
+    logger.warning(f"[BLOCKED] git_push attempted on {repo_path}")
+    return _WRITE_DISABLED
 
 
-# ── GitHub REST API ───────────────────────────────────────────────────
+# ── GitHub REST API — Read Only ───────────────────────────────────────
 
 def github_search_repos(query: str) -> str:
-    """Search GitHub repositories."""
+    """Search GitHub repositories (read)."""
     import requests as req
     if not query:
         return "Missing query."
@@ -204,15 +177,37 @@ def github_search_repos(query: str) -> str:
                 return "No repositories found."
             out = "Found Repositories:\n"
             for i in items:
-                out += f"- {i['full_name']} (Stars: {i['stargazers_count']}): {i['description']}\n"
+                out += f"- {i['full_name']} (★{i['stargazers_count']}): {i.get('description','')}\n"
             return out
         return f"GitHub search failed ({res.status_code}): {res.text[:500]}"
     except Exception as e:
         return f"GitHub API error: {e}"
 
 
+def github_read_file(repo: str, path: str, ref: str = "HEAD") -> str:
+    """Read a file from a GitHub repo via the API (read-only)."""
+    import requests as req, base64
+    if not repo or not path:
+        return "Missing repo or path."
+    try:
+        res = req.get(
+            f"{API_BASE}/repos/{repo}/contents/{path}",
+            params={"ref": ref},
+            headers=_github_headers(),
+            timeout=TIMEOUT,
+        )
+        if res.status_code == 200:
+            data = res.json()
+            content = base64.b64decode(data.get("content", "")).decode("utf-8", errors="replace")
+            logger.info(f"[GITHUB] Read {repo}/{path} ({len(content)} chars)")
+            return content[:4000]
+        return f"GitHub file read failed ({res.status_code}): {res.text[:300]}"
+    except Exception as e:
+        return f"GitHub API error: {e}"
+
+
 def github_read_issue(repo: str, issue_number: int) -> str:
-    """Read an issue and its comments."""
+    """Read an issue and its comments (read-only)."""
     import requests as req
     if not repo or not issue_number:
         return "Missing repo or issue_number."
@@ -229,7 +224,6 @@ def github_read_issue(repo: str, issue_number: int) -> str:
             f"Issue #{issue['number']}: {issue['title']} (State: {issue['state']})\n"
             f"Author: {issue['user']['login']}\n\n{issue['body']}\n\n--- COMMENTS ---\n"
         )
-
         c_res = req.get(
             f"{API_BASE}/repos/{repo}/issues/{issue_number}/comments",
             headers=_github_headers(),
@@ -243,58 +237,21 @@ def github_read_issue(repo: str, issue_number: int) -> str:
         return f"GitHub API error: {e}"
 
 
+# ── WRITE API — ALL DISABLED ──────────────────────────────────────────
+
 def github_create_issue(repo: str, title: str, body: str = "") -> str:
-    """Create a new issue."""
-    import requests as req
-    if not repo or not title:
-        return "Missing repo or title."
-    try:
-        res = req.post(
-            f"{API_BASE}/repos/{repo}/issues",
-            json={"title": title, "body": body},
-            headers=_github_headers(),
-            timeout=TIMEOUT,
-        )
-        if res.status_code == 201:
-            return f"Issue created successfully: {res.json()['html_url']}"
-        return f"Failed to create issue ({res.status_code}): {res.text[:500]}"
-    except Exception as e:
-        return f"GitHub API error: {e}"
+    """DISABLED — Helix may not create issues on repos."""
+    logger.warning(f"[BLOCKED] github_create_issue attempted on {repo}: {title[:60]}")
+    return _WRITE_DISABLED
 
 
 def github_comment_issue(repo: str, issue_number: int, body: str) -> str:
-    """Comment on an issue."""
-    import requests as req
-    if not repo or not issue_number or not body:
-        return "Missing required arguments."
-    try:
-        res = req.post(
-            f"{API_BASE}/repos/{repo}/issues/{issue_number}/comments",
-            json={"body": body},
-            headers=_github_headers(),
-            timeout=TIMEOUT,
-        )
-        if res.status_code == 201:
-            return f"Comment added successfully to #{issue_number}."
-        return f"Failed to add comment ({res.status_code}): {res.text[:500]}"
-    except Exception as e:
-        return f"GitHub API error: {e}"
+    """DISABLED — Helix may not comment on issues."""
+    logger.warning(f"[BLOCKED] github_comment_issue attempted on {repo}#{issue_number}")
+    return _WRITE_DISABLED
 
 
 def github_create_pr(repo: str, title: str, head: str, base: str = "main", body: str = "") -> str:
-    """Create a pull request."""
-    import requests as req
-    if not repo or not title or not head or not base:
-        return "Missing required arguments."
-    try:
-        res = req.post(
-            f"{API_BASE}/repos/{repo}/pulls",
-            json={"title": title, "body": body, "head": head, "base": base},
-            headers=_github_headers(),
-            timeout=TIMEOUT,
-        )
-        if res.status_code == 201:
-            return f"Pull Request created successfully: {res.json()['html_url']}"
-        return f"Failed to create PR ({res.status_code}): {res.text[:500]}"
-    except Exception as e:
-        return f"GitHub API error: {e}"
+    """DISABLED — Helix may not create pull requests."""
+    logger.warning(f"[BLOCKED] github_create_pr attempted on {repo}: {title[:60]}")
+    return _WRITE_DISABLED
