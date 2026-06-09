@@ -192,6 +192,13 @@ class PulseLoop:
         # and blocks the success-path restore. Cleared on morning wake-up.
         self._rate_limited = False
 
+        # User interrupt flag — set when a user message arrives mid-pulse
+        # so the current autonomous generation can be cut short immediately
+        self._user_interrupt = threading.Event()
+        self._consecutive_429s = 0
+        self._fallback_successes = 0
+        self._restore_failures = 0
+
     def set_dream_engine(self, daemon):
         """Wire the background daemon for rollover snapshots."""
         self._dream_engine = daemon
@@ -266,6 +273,7 @@ class PulseLoop:
             if event_type == "user_message":
                 self._last_incoming_time = time.time()
                 self._last_activity_time = time.time()
+                self._user_interrupt.set()
                 if self._state != "ACTIVE":
                     self.wake(trigger=f"event: {event_type}")
             # Nudge sentinel omega on relevant events
@@ -329,8 +337,8 @@ class PulseLoop:
 
     def _is_sleep_hours(self) -> bool:
         """Check if current time is within the sleep window (1-6 AM)."""
-        hour = datetime.now().hour
-        return self.SLEEP_START <= hour < self.SLEEP_END
+        # Disabled for testing
+        return False
 
     def _main_loop(self):
         """Main consciousness thread — event-driven state machine.
@@ -580,6 +588,9 @@ class PulseLoop:
         6. Store everything to memory
         7. Update physics
         """
+        # Clear interrupt at start of each pulse
+        self._user_interrupt.clear()
+        
         self._pulse_count += 1
         timestamp = datetime.now().strftime("%H:%M:%S")
 
@@ -610,6 +621,11 @@ class PulseLoop:
 
         # 4. Send to LLM
         thought = self._send_pulse(pulse_message)
+
+        # Check for user interrupt mid-pulse
+        if self._user_interrupt.is_set():
+            logger.info("Pulse interrupted by incoming user message")
+            return
 
         # 4b. If we got a 429, back off and optionally fallback model
         _FALLBACK_MODEL = "gemini-3.1-flash-lite-preview"
@@ -883,9 +899,10 @@ class PulseLoop:
         # Build system instruction (identity + beliefs, no tool text)
         system_instruction = self._build_system_instruction()
 
-        # Load tool declarations for Gemini native function calling
+        # Load tool declarations for function-calling capable providers
         tool_declarations = None
-        if self._provider_config and self._provider_config.provider_type == "gemini":
+        fc_providers = {"gemini", "mistral_tool", "hermes_tool"}
+        if self._provider_config and self._provider_config.provider_type in fc_providers:
             try:
                 # Primary: use the ToolRegistry (check_fn-filtered)
                 from tools.tool_registry import registry
@@ -1080,6 +1097,7 @@ class PulseLoop:
                 logger.error(f"Toolset rebuild failed: {e}")
             self._pending_toolset_rebuild = False
 
+        logger.warning(f"[_send_pulse] chat type={type(self._chat).__name__}")
         thought = self._chat.send_message(message)
         return thought
 
@@ -1087,12 +1105,26 @@ class PulseLoop:
 
     def _parse_output(self, thought: str):
         """Parse the model's internal monologue for action tags.
-        
-        DEPRECATED: All tools are now native Function Calls. This method is left
-        empty but preserved for backwards compatibility with any non-FC models
-        if implemented in the future.
+
+        For non-FC models (Hermes, Mistral) the send_message() already
+        handles the tool loop internally. This callback only delivers the
+        final response — not the intermediate narration / action tag lines.
         """
-        pass
+        if hasattr(self._chat, 'is_non_fc_model') and self._chat.is_non_fc_model:
+            if not thought.strip() or thought.startswith("[Titan internal error"):
+                return
+            # Suppress delivery if this is a tool-call narration (not final answer)
+            # Bracket action tags indicate the model is mid-tool-loop
+            import re as _re
+            action_tag_pat = _re.compile(
+                r'\[(SEARCH|READ_FILE|WRITE_FILE|WRITE|RECALL|MEMORY_RECALL)\b',
+                _re.IGNORECASE
+            )
+            if action_tag_pat.search(thought):
+                logger.debug("_parse_output: suppressing narration delivery (action tags present)")
+                return
+            if self._delivery_callback:
+                self._delivery_callback("User", thought.strip())
 
     # ── Status ───────────────────────────────────────────────────────
 

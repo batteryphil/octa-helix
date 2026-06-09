@@ -75,7 +75,33 @@ def create_session(
         tool_executor: Optional ToolExecutor for function call handling (Gemini only).
         preconscious: Optional Preconscious for belief enrichment on tool returns.
     """
-    if config.provider_type == "titan":
+    if config.provider_type == "hermes_tool":
+        from llm.providers.hermes_tool_provider import HermesToolSession
+        return HermesToolSession(
+            system_instruction=system_instruction,
+            tool_declarations=tool_declarations,
+            tool_executor=tool_executor,
+        )
+
+    if config.provider_type == "mistral_tool":
+        from llm.providers.mistral_tool_provider import MistralToolSession
+        return MistralToolSession(
+            system_instruction=system_instruction,
+            temperature=config.temperature,
+            max_output_tokens=config.max_output_tokens,
+            tool_declarations=tool_declarations,
+            tool_executor=tool_executor,
+        )
+
+    elif config.provider_type == "falcon_mamba":
+        from llm.providers.falcon_mamba_provider import FalconMambaSession
+        return FalconMambaSession(
+            system_instruction=system_instruction,
+            temperature=config.temperature,
+            max_output_tokens=config.max_output_tokens,
+        )
+
+    elif config.provider_type == "titan":
         from llm.providers.titan_provider import TitanSession
         return TitanSession(
             system_instruction=system_instruction,
@@ -121,32 +147,86 @@ def create_session(
     else:
         raise ValueError(
             f"Unknown provider type: {config.provider_type}. "
-            f"Supported: titan, gemini, ollama, llama_cpp"
+            f"Supported: falcon_mamba, titan, gemini, ollama, llama_cpp"
         )
 
 
 def detect_available_provider() -> Optional[ProviderConfig]:
     """Auto-detect the best available LLM backend.
 
-    Priority: Titan (local MIMO, highest) > Gemini API > Ollama > llama.cpp > None
+    Priority: Falcon-Mamba-7B (highest, pure Mamba 4-bit) > Titan > Gemini > Ollama > llama.cpp
 
-    Titan is the primary conscious mind when available (fully local, no API cost).
-    Gemini is the cloud fallback. Ollama/llama.cpp are for subagents.
+    Falcon-Mamba-7B is the primary conscious mind — pure SSM, no KV cache,
+    4.5GB VRAM, instruction-tuned, coherent output.
     """
     import os
 
-    # 0. Titan MIMO — highest priority: fully local, no API cost
-    _here = os.path.dirname(os.path.abspath(__file__))
+    # 0. Hermes-3-Llama-3.1-8B — highest priority (best agentic tool calibration)
+    _here    = os.path.dirname(os.path.abspath(__file__))
     _project = os.path.normpath(os.path.join(_here, "..", "..", ".."))
-    titan_ckpt = os.path.join(_project, "checkpoints_2.7b", "phase_1.pt")
+    hermes_cache = os.path.join(_project, "hf_cache",
+                                "models--NousResearch--Hermes-3-Llama-3.1-8B")
+    if os.path.isdir(hermes_cache):
+        # Verify weights are actually downloaded (not just the cache stub)
+        import glob
+        hermes_weights = glob.glob(os.path.join(hermes_cache, "**", "*.safetensors"), recursive=True)
+        if hermes_weights:
+            logger.info(
+                "Auto-detected Hermes-3-Llama-3.1-8B (4-bit NF4) — "
+                "optimized for agentic function calling, ~5.0GB VRAM"
+            )
+            return ProviderConfig(
+                provider_type="hermes_tool",
+                model="NousResearch/Hermes-3-Llama-3.1-8B",
+                context_window=8192,
+                temperature=0.7,
+                max_output_tokens=512,
+            )
+        else:
+            logger.info("Hermes-3 cache dir exists but weights not yet downloaded — skipping")
+
+    # 1. Mistral-7B-Instruct-v0.3 — tool-calling capable
+    mistral_cache = os.path.join(_project, "hf_cache",
+                                 "models--mistralai--Mistral-7B-Instruct-v0.3")
+    if os.path.isdir(mistral_cache):
+        logger.info(
+            "Auto-detected Mistral-7B-Instruct-v0.3 (4-bit NF4) — "
+            "tool-calling capable, ~4.1GB VRAM"
+        )
+        return ProviderConfig(
+            provider_type="mistral_tool",
+            model="mistralai/Mistral-7B-Instruct-v0.3",
+            context_window=32768,
+            temperature=0.7,
+            max_output_tokens=512,
+        )
+
+    # 1. Falcon-Mamba-7B — conversation-only fallback (no tool calls)
+    falcon_cache = os.path.join(_project, "hf_cache",
+                                "models--tiiuae--falcon-mamba-7b-instruct")
+    if os.path.isdir(falcon_cache):
+        logger.info(
+            "Auto-detected Falcon-Mamba-7B-Instruct (4-bit NF4) — "
+            "pure Mamba, zero KV cache, ~4.5GB VRAM (no tool calling)"
+        )
+        return ProviderConfig(
+            provider_type="falcon_mamba",
+            model="tiiuae/falcon-mamba-7b-instruct",
+            context_window=8192,
+            temperature=0.7,
+            max_output_tokens=512,
+        )
+
+    # 1. Titan MIMO — fallback local model
+    titan_ckpt = os.path.join(_project, "legacy_1.4b_project", "titan_checkpoints", "phase_sft20_best.pt")
     if os.path.exists(titan_ckpt):
         logger.info(
-            f"Auto-detected Titan 2.7B MIMO checkpoint at {titan_ckpt} — "
+            f"Auto-detected Titan 1.4B MIMO checkpoint at {titan_ckpt} — "
             "using Titan as primary conscious mind (100% local)"
         )
         return ProviderConfig(
             provider_type="titan",
-            model="auto",
+            model=titan_ckpt,
             context_window=4096,
             temperature=0.85,
             max_output_tokens=512,

@@ -1,6 +1,29 @@
 """
 Helix — Main Entry Point
 
+Project Specification: Helix-Mamba Nervous System Integration
+Objective: To refactor the Helix-AGI framework to support low-parameter State-Space Models (1.4B–2.7B Mamba) by migrating the "Lagrangian Sentinel" cognitive state management from a text-based, prompt-injected JSON system to a direct-feed neural telemetry system.
+
+The Problem: Current small-scale models lack the instruction-following capacity to parse, format, and adhere to the heavy mathematical structure required for the 8D cognitive manifold (Lagrangian Sentinel) within the system prompt. This results in "Dormant" status, JSON parsing failures, and context-window saturation, rendering the agent unresponsive.
+
+The Solution (Proposed Workflow):
+1. Direct Telemetry via Hooks: Utilize torch.nn.Module.register_forward_hook to intercept hidden states from the Mamba SSM blocks.
+2. Entropy Extraction: Calculate the internal "Internal Weather" (\Omega) by computing the Shannon entropy of the latent state distributions. This bypasses the need for the model to "speak" its own state, preventing hallucinated math.
+3. Manifold Projection: Implement a lightweight W \in \mathbb{R}^{d_model \times 8} projection layer to map high-dimensional latent states directly into the 8D coordinate space required by the Helix manifold.
+4. Decoupled State Board: Refactor state_board.py to accept input via a high-frequency telemetry stream (Python Queue or SharedMemory) rather than regex-parsing model text output.
+
+Why This Is Necessary:
+- Deterministic State: It removes reliance on the model's ability to output valid JSON, ensuring the "Heartbeat" of the agent remains consistent regardless of the model's chat output.
+- Resource Efficiency: By stripping the manifold instructions from the system prompt, we reclaim approximately 40-50% of the model’s effective context window, allowing small-scale models to focus entirely on reasoning and dialogue.
+- Hardware Compatibility: This architecture allows for fluid execution on consumer-grade hardware (1.4B–2.7B parameters), effectively making the "Helix" cognitive framework model-agnostic.
+
+Success Criteria:
+- The agent maintains an active, non-dormant pulse while processing locally.
+- The 8D Manifold telemetry updates in real-time as the model processes input, visible through the state_board.py monitor.
+- The model responds to user input without requiring a JSON-formatted self-reflection output.
+
+---
+
 Initializes the full cognitive architecture and runs the pulse loop:
   - Three-tier memory (short-term, long-term, core)
   - Categorized belief store (identity, people, capabilities, desires, knowledge)
@@ -115,23 +138,43 @@ def on_thought(pulse_number: int, thought: str, events: list):
 
 
 def on_delivery(recipient: str, message: str):
-    """Callback for outbound messages — prints to console."""
+    """Callback for outbound messages — prints to console and pushes to dashboard."""
     print(f"\n  📤 → {recipient}: {message}")
+    try:
+        from dashboard.dashboard_comms import get_comms
+        comms = get_comms()
+        comms.push_outbound(recipient, message)
+    except ImportError:
+        pass
 
 
 def setup_helix(data_dir: str = "data"):
     """Initialize the complete Helix cognitive architecture."""
     print("Initializing Helix Architecture...")
 
-    # ── 0. Titan Preload — warm engine in VRAM before first pulse ────────────
-    # Loads 5.8GB checkpoint once at boot. All subsequent pulses use the
-    # cached singleton — zero reload delay per inference call.
+    # ── 0. Model Preload — warm engine in VRAM before first pulse ────────────
+    # Falcon-Mamba-7B (4-bit NF4, ~4.5GB) is loaded lazily on first inference.
+    # We do an explicit preload here to front-load the 30s startup delay so
+    # the first chat response isn't slow.
     try:
-        from titan_inference import preload as _titan_preload
-        print("  Titan: preloading into VRAM (one-time, ~30s)...")
-        _titan_preload()
+        from llm.providers.base import detect_available_provider
+        _provider = detect_available_provider()
+        if _provider and _provider.provider_type == "mistral_tool":
+            print("  Mistral-7B-Instruct-v0.3: preloading 4-bit model (~10s)...")
+            from llm.providers.mistral_tool_provider import _load_engine
+            _load_engine()
+            print("  Mistral-7B-Instruct-v0.3: ready ✅ (tool-calling enabled)")
+        elif _provider and _provider.provider_type == "falcon_mamba":
+            print("  Falcon-Mamba-7B: preloading 4-bit model (~30s)...")
+            from llm.providers.falcon_mamba_provider import _load_engine
+            _load_engine()
+            print("  Falcon-Mamba-7B: ready ✅")
+        elif _provider and _provider.provider_type == "titan":
+            from titan_inference import preload as _titan_preload
+            print("  Titan: preloading into VRAM (one-time, ~30s)...")
+            _titan_preload()
     except Exception as _e:
-        print(f"  Titan: preload skipped ({_e}) — will load on first inference")
+        print(f"  Model preload skipped ({_e}) — will load on first inference")
 
     # ── 1. Memory Systems ────────────────────────────────────────────
 
@@ -377,6 +420,30 @@ def setup_helix(data_dir: str = "data"):
     curiosity.start()
     print("  Curiosity engine: started (2 min cycles, pauses when user active)")
 
+    # ── Auto-enable toolsets based on available credentials ──────────────
+    # GitHub — enable if GITHUB_TOKEN is set
+    _github_token = os.environ.get("GITHUB_TOKEN", "")
+    if _github_token:
+        try:
+            pulse_loop._active_toolsets.add("github")
+            print(f"  GitHub toolset: enabled (token configured)")
+        except Exception as e:
+            print(f"  GitHub toolset: failed to enable ({e})")
+    else:
+        print("  GitHub toolset: disabled (set GITHUB_TOKEN to enable)")
+
+    # Google Workspace — enable if credentials file or token is present
+    _google_creds = os.environ.get("GOOGLE_CREDENTIALS_FILE", "")
+    _google_token = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if _google_creds or _google_token:
+        try:
+            pulse_loop._active_toolsets.add("google")
+            print(f"  Google Workspace toolset: enabled (credentials configured)")
+        except Exception as e:
+            print(f"  Google Workspace toolset: failed to enable ({e})")
+    else:
+        print("  Google Workspace toolset: disabled (set GOOGLE_CREDENTIALS_FILE to enable)")
+
     # 6. Titan Memory Bridge — journal → Titan context + overnight fine-tuning
     replay_path = Path("../helix_replay_buffer.jsonl")
     memory_bridge = TitanMemoryBridge(
@@ -415,6 +482,32 @@ def setup_helix(data_dir: str = "data"):
     )
     print("  Consciousness context providers: registered (autobiography, attention, monologue, self_model, titan_memory)")
 
+    # ── CAAI Governor — behavioral collapse detection ──────────────────────────
+    try:
+        from core.governor import CAAIGovernor
+        governor = CAAIGovernor(pulse_loop=pulse_loop)
+        # Wire to Mistral provider if active
+        if pulse_loop._chat and hasattr(pulse_loop._chat, "_history"):
+            governor.set_provider(pulse_loop._chat)
+
+        # Register as post-pulse hook so it observes every response
+        from core.post_pulse_hooks import register_hook
+
+        def _governor_hook(context, pulse_loop=pulse_loop, gov=governor):
+            # context is a PostPulseHookContext — extract the thought string
+            thought = getattr(context, 'thought', None) or str(context)
+            intervention = gov.observe(thought)
+            if intervention:
+                logger.warning(f"Governor fired on: {intervention}")
+            # Late-wire the provider on first pulse if not done at boot
+            if gov._provider is None and pulse_loop._chat:
+                gov.set_provider(pulse_loop._chat)
+
+        register_hook(_governor_hook, name="caai_governor")
+        print("  CAAI Governor: active (collapse detection enabled)")
+    except Exception as e:
+        print(f"  CAAI Governor: failed to start ({e})")
+
     return (pulse_loop, orchestrator, daemon, memory_manager, belief_store,
             scratchpad, telegram_bot, sentinel,
             autobiography, attention_schema, monologue, self_model, curiosity)
@@ -422,11 +515,30 @@ def setup_helix(data_dir: str = "data"):
 
 def main_loop():
     """Interactive loop — user messages are events in the pulse stream."""
-    pulse_loop, orchestrator, daemon, memory, beliefs, scratchpad, telegram_bot, sentinel = setup_helix()
+    pulse_loop, orchestrator, daemon, memory, beliefs, scratchpad, telegram_bot, sentinel, \
+        autobiography, attention_schema, monologue, self_model, curiosity = setup_helix()
 
     print("\n--- Helix Pulse System ---")
     print("Commands: 'exit', 'stats', 'core', 'recent', 'beliefs', 'notes', 'dream'")
     print("Anything else is sent as a user message into the pulse stream.\n")
+
+    # Start dashboard inbound poller
+    import threading
+    import time
+    try:
+        from dashboard.dashboard_comms import get_comms
+        comms = get_comms()
+        def poll_dashboard():
+            while True:
+                try:
+                    for msg in comms.pop_inbound():
+                        orchestrator.send_user_message(msg["content"], sender=msg.get("sender", "User"))
+                except Exception:
+                    pass
+                time.sleep(1)
+        threading.Thread(target=poll_dashboard, daemon=True).start()
+    except ImportError:
+        print("Dashboard comms not found, skipping dashboard polling.")
 
     # Start Telegram bot
     telegram_bot.start()
@@ -442,16 +554,29 @@ def main_loop():
     time.sleep(1)
 
     # Detect if running headless (no terminal attached)
-    import sys
+    import sys, signal
     headless = not sys.stdin.isatty()
 
     if headless:
-        print("Running in headless/daemon mode (Telegram only).")
+        print("Running in headless/daemon mode — dashboard polling active.", flush=True)
+        # Keep main thread alive so daemon threads (pulse_loop, sentinel, etc.) stay running.
+        # Use signal.pause() as the most reliable way to block without busy-wait.
+        stop_event = threading.Event()
+        def _on_signal(sig, frame):
+            print(f"\nReceived signal {sig} — shutting down.", flush=True)
+            stop_event.set()
+        signal.signal(signal.SIGTERM, _on_signal)
+        signal.signal(signal.SIGINT, _on_signal)
         try:
-            while True:
-                time.sleep(60)
-        except KeyboardInterrupt:
-            pass
+            while not stop_event.is_set():
+                time.sleep(5)
+                # Log heartbeat so we know the process is alive
+                if pulse_loop._thread and not pulse_loop._thread.is_alive():
+                    print("[WARN] Pulse loop thread died — attempting restart.", flush=True)
+                    pulse_loop.start()
+        except Exception as e:
+            print(f"[FATAL] Main loop error: {e}", flush=True)
+            import traceback; traceback.print_exc()
     else:
         while True:
             try:
