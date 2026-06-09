@@ -84,3 +84,4 @@ AI_Spatial_Memory/
 
 # Local backups
 *_helix_backup/
+credentials.env

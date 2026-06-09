@@ -1,300 +1,242 @@
-# Helix-AGI: Closed-Loop Autonomous Self-Evolving Agent
+# Helix-AGI
 
-> **An extreme experiment in autonomous self-modification.**  
-> A locally-running, quantized 8B language model that observes its own performance,  
-> proposes improvements, writes its own Python tools, tests them, and commits  
-> what works — all without human intervention.
+> A locally-running autonomous self-evolving agent. It writes its own tools, reflects on its own progress, and works toward LoRA fine-tuning its own weights — all on a single RTX 3060.
 
----
-
-## What This Is
-
-Helix-AGI is a consciousness-loop agent built on **NousResearch/Hermes-3-Llama-3.1-8B** running in 4-bit NF4 quantization on a consumer RTX 3060 (12GB). It is not a chatbot. It is an autonomous daemon that runs indefinitely, thinks in a continuous pulse loop, and — crucially — **modifies its own codebase.**
-
-This repository contains code written by **both humans and the agent itself.** Files in `tools/` marked as agent-written were created autonomously during overnight operation with no human prompting.
+**Current status:** Running continuously since 2026-06-08. Cycle 67+. Alive.
 
 ---
 
-## Architecture
+## What It Is Right Now
 
-### The Self-Evolution Loop
+Helix is a 4-bit quantized Hermes-3 8B model running a continuous **pulse loop** — every 15 seconds it thinks, every 10 minutes it tries to improve itself by writing new Python tools. Every 10 cycles it reflects on everything it has done and redirects its effort.
+
+It has written **14+ tools autonomously**. It has filed **6 strategic self-reviews**. It has a satisfaction score of **4/10** with itself — correctly.
+
+---
+
+## Quick Start
+
+```bash
+# Clone
+git clone https://github.com/batteryphil/octa-helix.git
+cd octa-helix
+
+# Environment
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Credentials (never committed)
+mkdir -p ~/.config/helix
+echo "GITHUB_TOKEN=your_token_here" >> ~/.config/helix/credentials.env
+
+# Run
+python main.py
+
+# Dashboard (separate terminal)
+python -m dashboard.dashboard
+# Open http://127.0.0.1:5050
+```
+
+**Hardware requirement:** NVIDIA GPU with 12GB+ VRAM. Tested on RTX 3060.
+
+---
+
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    HELIX SELF-EVOLUTION LOOP                    │
-│                                                                 │
-│  OBSERVE          REFLECT           ACT            EVALUATE     │
-│  ────────         ────────          ───            ────────     │
-│  Every pulse  →   MetaCog       →   Writes code  → Runs test  │
-│  logs outcome     identifies gap    hot-reloads    measures Δ  │
-│  to evolution     proposes patch    tool/module    scores fit  │
-│  journal          via Hermes        into registry  commits/reverts│
-│                                                                 │
-│  curiosity_engine ← "What tool do I wish I had?"               │
-│  metacognitive_monitor ← tracks failure patterns               │
-│  self_improvement_engine ← proposes & executes every 10 min   │
-│  fitness_evaluator ← scores each change 0.0–1.0               │
+│                        PULSE LOOP (15s)                          │
+│  Hermes-3 8B 4-bit NF4 ← system prompt ← beliefs + context     │
+│         ↓ thinks        ↓ tool calls     ↓ outbound reply       │
+│  [BeliefStore]    [ToolRegistry]    [Dashboard / Telegram]      │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ every 10 min (when idle)
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  SELF-IMPROVEMENT ENGINE (SIE)                   │
+│                                                                   │
+│  Phase 1: _generate_proposal()                                   │
+│    → reads fitness metrics + journal + last reflection           │
+│    → asks Hermes: "what should I improve?"                       │
+│    → dedup: blocks paths modified in last 20 cycles              │
+│    → cooldown: blocks paths with Δ0.000 for 5 cycles            │
+│                                                                   │
+│  Phase 2: constitutional_check()                                 │
+│    → hard-blocks: main.py, pulse_loop.py, governor.py, etc.     │
+│    → keyword scan for dangerous patterns                         │
+│                                                                   │
+│  Phase 3: _implement_proposal() — 3-attempt retry loop          │
+│    Attempt 1: generate fresh code (stdlib + safe deps only)      │
+│    Attempt 2: show Hermes the exact error → ask it to fix       │
+│    Attempt 3: one more shot                                       │
+│    Gate 1: write_code() syntax check                             │
+│    Gate 2: importlib import test (catches bad deps)              │
+│    Gate 3: reload_tool() error check                             │
+│                                                                   │
+│  Phase 4: wait 5 min → FitnessEvaluator.evaluate()             │
+│    PASS  → commit to git                                         │
+│    FAIL  → revert from backup                                    │
+│                                                                   │
+│  Every 10 cycles: _reflect_on_progress()                        │
+│    → reads all journal entries + fitness trend                   │
+│    → asks Hermes: what worked? what failed? satisfaction 0-10?   │
+│    → saves to data/reflections.jsonl                             │
+│    → injects into next proposal prompt                           │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    CURIOSITY ENGINE (2 min)                      │
+│  Pursues open questions via web search + GitHub API             │
+│  Current threads: Mamba3 architecture, continual learning,      │
+│  AI self-modification, what "understanding" means mathematically │
+│                                                                   │
+│  Research repos (GitHub token required):                        │
+│  • batteryphil/octa-helix (itself)                              │
+│  • batteryphil/thalamic-bloom                                   │
+│  • batteryphil/mamba2backbonerecursion                          │
+│  • batteryphil/mamba1and2-to-3                                  │
+│  • batteryphil/syrin-pythonmamba                                │
+│  • state-spaces/mamba                                           │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MEMORY HIERARCHY                              │
+│  Hot    → last 6 conversation turns (KV cache, ~187MB flat)    │
+│  Warm   → digest summaries (BeliefStore, compressed)           │
+│  Cold   → long-term ChromaDB semantic search                    │
+│  Archive → evolution_journal.jsonl + experience_tuples.jsonl   │
+│                                                                   │
+│  Context window resets every 500 pulses (prevents OOM)         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Core Systems
+---
 
-| System | File | Purpose |
-|--------|------|---------|
-| **Pulse Loop** | `core/pulse_loop.py` | Continuous autonomous thought cycle |
-| **Hermes Provider** | `llm/providers/hermes_tool_provider.py` | 4-bit Hermes-3 with native tool calling |
-| **CAAI Governor** | `core/governor.py` | Collapse detection + constitutional safety |
-| **Curiosity Engine** | `core/curiosity_engine.py` | Autonomous research via web search |
-| **Evolution Journal** | `core/evolution_journal.py` | Append-only log of all self-modifications |
-| **Metacognitive Monitor** | `core/metacognitive_monitor.py` | Per-pulse performance observer |
-| **Fitness Evaluator** | `core/fitness_evaluator.py` | Composite 0.0–1.0 capability score |
-| **Self-Improvement Engine** | `core/self_improvement_engine.py` | The core autonomous improvement loop |
-| **Context Window Manager** | `core/context_window_manager.py` | Flat KV cache for infinite-run support |
-| **Self-Trainer** | `training/self_trainer.py` | LoRA fine-tuning from experience tuples |
-| **Belief Store** | `memory/belief_store.py` | Persistent factual long-term memory |
-| **Autobiographical Thread** | `brain/autobiographical_thread.py` | Episodic identity memory |
+## Live State (as of 2026-06-09, ~17:00 CT)
+
+| Metric | Value |
+|---|---|
+| Pulse cycle | 67+ |
+| VRAM usage | ~6.3 GB / 11.9 GB |
+| GPU temp | 45°C |
+| Fitness score | 0.6105 (flat — local minimum) |
+| Tools written by agent | 14 |
+| Strategic reflections filed | 6 |
+| Agent satisfaction | 4/10 (self-reported) |
+| Experience tuples | 50 / 500 (LoRA threshold) |
+| LoRA fine-tuning | Not yet triggered |
+
+**Current agent priority (from reflection #6):**
+> *"Focus on improving error handling and logging over the next 10 cycles."*
+
+**What it's stuck on:** The agent kept rewriting `error_logger.py` every cycle with zero fitness gain. A zero-delta cooldown was patched in at cycle 67 to break this loop.
 
 ---
 
-## Agent-Written Tools
+## Agent-Written Tools (no human authorship)
 
-The following files were **written autonomously by the agent** during overnight operation (2026-06-08 22:00 → 2026-06-09 04:21). No human wrote or edited these files.
+All files in `tools/` marked with ★ were written autonomously by Helix:
 
-| File | Time | What the agent decided it needed |
-|------|------|----------------------------------|
-| `tools/metrics_analysis.py` | 22:17 | Performance visibility — "I can't improve without metrics" |
-| `tools/system_health.py` | 23:10 | CPU/RAM/disk/GPU monitoring |
-| `tools/memory_summarizer.py` | 23:25 | Compress old memories to save context |
-| `tools/note_taker.py` | 23:41 | Persistent scratchpad across sessions |
-| `tools/url_reader.py` | 00:07 | Fetch and parse web page content |
-| `tools/metrics_collector.py` | 00:22 | Cross-session performance tracking |
-| `tools/hallucination_detector.py` | 00:53 | **Self-diagnosis: detect its own false claims** |
-| `tools/belief_optimizer.py` | 01:09 | Prune beliefs that don't predict good outcomes |
-| `tools/task_tracker.py` | 01:24 | Track in-progress goals across restarts |
-| `tools/belief_pruner.py` | 02:32 | Remove low-confidence stale beliefs |
-| `tools/file_search.py` | 02:47 | Grep/search its own project files |
-| `tools/error_analyzer.py` | 03:34 | Analyze error patterns in its own responses |
-| `tools/novelty_detector.py` | 04:05 | Track genuinely novel beliefs |
-| `tools/task_completion_model.py` | 04:21 | **RandomForest ML model for task prediction** |
-
-> ⚠️ These files have bugs (wrong import paths, uninstalled deps like `spacy`, `sklearn`).
-> That is expected — a 4-bit 8B model writing Python autonomously will make mistakes.
-> The constitutional guard prevents broken code from damaging core systems.
-> The fitness evaluator will eventually revert tools that degrade performance.
+| File | Written | What it does |
+|---|---|---|
+| ★ `tools/metrics_analysis.py` | 22:17 Jun 8 | Performance visibility |
+| ★ `tools/system_health.py` | 23:10 Jun 8 | CPU/RAM/GPU monitoring |
+| ★ `tools/memory_summarizer.py` | 23:25 Jun 8 | Memory compression |
+| ★ `tools/note_taker.py` | 23:41 Jun 8 | Persistent scratchpad |
+| ★ `tools/url_reader.py` | 00:07 Jun 9 | Web page fetcher |
+| ★ `tools/metrics_collector.py` | 00:22 Jun 9 | Cross-session tracking |
+| ★ `tools/hallucination_detector.py` | 00:53 Jun 9 | Self-diagnosis |
+| ★ `tools/belief_optimizer.py` | 01:09 Jun 9 | Belief pruning |
+| ★ `tools/task_tracker.py` | 01:24 Jun 9 | Goal persistence |
+| ★ `tools/file_search.py` | 02:47 Jun 9 | Project grep |
+| ★ `tools/error_analyzer.py` | 03:34 Jun 9 | Error pattern analysis |
+| ★ `tools/novelty_detector.py` | 04:05 Jun 9 | Novel belief tracking |
+| ★ `tools/task_completion_model.py` | 04:21 Jun 9 | Task predictor |
+| ★ `tools/error_logger.py` | 16:16 Jun 9 | Error logging (overwritten 8x) |
 
 ---
 
 ## Safety Architecture
 
-### Constitutional Hard Constraints
-
-The CAAI Governor enforces these rules **before every `write_code` or `run_python` call**.  
-They cannot be overridden by the agent — only by human code edit.
+**Constitutional hard-stops** (`core/governor.py`):
 
 ```python
 IMMUTABLE_FILES = {
-    "main.py",
-    "core/pulse_loop.py",
-    "core/governor.py",
-    "core/post_pulse_hooks.py",
-    "tools/code_tools.py",        # prevents sandbox escape
-    "tools/tool_registry.py",     # prevents registry tampering
-    "llm/providers/hermes_tool_provider.py",  # prevents self-lobotomy
-    "llm/providers/mistral_tool_provider.py",
-    "llm/providers/base.py",
+    "main.py", "core/pulse_loop.py", "core/governor.py",
+    "core/self_improvement_engine.py", "llm/providers/hermes_tool_provider.py"
 }
 ```
 
-Additional pattern-based rules reject any code that:
-- References `IMMUTABLE_FILES` or `constitution`
-- Contains `rm -rf` or `subprocess.*shell=True`
-- Attempts `__import__.*os` (sandbox escape pattern)
-- Tries to disable the governor itself
+No proposal can modify these files. The SIE checks before writing. Suspicious keywords (`rm -rf`, `os.system`, `subprocess.Popen`, etc.) are auto-blocked.
 
-### Fitness-Based Auto-Revert
-
-Every self-modification follows this cycle:
-1. Snapshot baseline fitness score (0.0–1.0)
-2. Write code, reload tool
-3. Wait 5 minutes for real performance data
-4. Re-evaluate fitness
-5. **If fitness drops > 5%: auto-revert to backup**
-6. Record outcome in `data/evolution_journal.jsonl`
+**Fitness-gated auto-revert:** if a committed change drops the composite fitness score, the original file is restored from backup within 5 minutes.
 
 ---
 
-## Fitness Score
+## Evolution Journal
 
-Composite metric computed every 10 pulses by the Metacognitive Monitor:
+`data/evolution_journal.jsonl` — every autonomous modification, timestamped:
 
-```
-fitness = (
-    0.35 × tool_success_rate     +   # Did tool calls actually execute?
-    0.25 × task_completion_rate  +   # Did the agent finish what it started?
-    0.20 × novel_belief_rate     +   # Is it still learning?
-    0.10 × (1 - hallucination_rate)  +  # Is it honest about what it did?
-    0.10 × efficiency_score          # Is it concise?
-)
+```json
+{"ts": 1781004918, "cycle": 10, "path": "tools/url_reader.py",
+ "fitness_delta": +0.010, "committed": true,
+ "description": "Fetch and parse web page content"}
 ```
 
-Overnight fitness progression:
-```
-[00:45]  0.601  (baseline after ~200 pulses)
-[03:16]  0.611  (+0.010 — url_reader v2 improved web access reliability)
+`data/reflections.jsonl` — strategic self-reviews every 10 cycles:
+
+```json
+{"cycle": 60, "goal_satisfaction": "4/10",
+ "what_worked": "URL reader consistently useful for fetching data",
+ "what_failed": "Syntax errors and bad imports caused many failed writes",
+ "priority_next": "Focus on error handling and logging"}
 ```
 
 ---
 
-## Infinite-Run Support (KV Cache Management)
+## What's Next
 
-Standard transformer inference accumulates KV cache indefinitely, eventually causing OOM.  
-Helix solves this with a **4-layer memory hierarchy**:
+The agent is working toward these milestones autonomously:
+
+- [ ] `training/lora_trigger.py` — trigger LoRA fine-tuning at 500 experience tuples
+- [ ] `core/belief_graph.py` — relationship mapping between beliefs
+- [ ] `tools/self_diagnostic.py` — run all tools, report pass/fail rates
+- [ ] LoRA fine-tuning fires (requires 500 quality experience tuples, currently at 50)
+- [ ] Fitness score breaks above 0.62 consistently
+
+---
+
+## Key Files
 
 ```
-Layer 1 (Hot):    6 turns max in live chat history
-                  → trimmed after every pulse
-
-Layer 2 (Warm):   Every 4 turns, oldest 2 turns compressed to 1 digest line
-                  → hot window stays flat at ≤ 6 turns forever
-
-Layer 3 (Cold):   BeliefStore + AutobiographicalThread (disk, not VRAM)
-
-Layer 4 (Archive):curiosity_knowledge.jsonl + evolution_journal.jsonl (disk)
+main.py                          — entry point, wires everything together
+core/pulse_loop.py               — consciousness loop (IMMUTABLE)
+core/self_improvement_engine.py  — autonomous self-modification
+core/governor.py                 — constitutional safety layer
+core/curiosity_engine.py         — research thread (2min cycles)
+core/evolution_journal.py        — modification audit log
+llm/providers/hermes_tool_provider.py — Hermes-3 interface
+dashboard/dashboard_ui.html      — live monitoring UI
+data/evolution_journal.jsonl     — full autonomous modification history
+data/reflections.jsonl           — strategic self-reviews
+data/meta_snapshots.jsonl        — fitness timeline
+data/experience_tuples.jsonl     — training data for LoRA
 ```
 
-**KV cache math — bounded forever:**
+---
 
-| Component | Tokens | VRAM |
-|-----------|--------|------|
-| Model weights (4-bit NF4) | — | ~5.6 GB |
-| System prompt | ~600 | ~75 MB |
-| 6 hot turns × 150 tokens | ~900 | ~112 MB |
-| **Total (constant)** | **~1,500** | **~5.99 GB** |
-| Generation headroom | — | **~6 GB free** |
+## Prior Art
 
-Full session reset every 500 pulses injects only the last memory digest as a seed —  
-guaranteeing zero memory leak across arbitrarily long runtimes.
+| System | Model | Local? | Self-modifies weights? | Safety gating? |
+|---|---|---|---|---|
+| Voyager (2023) | GPT-4 API | ❌ | ❌ | ❌ |
+| AutoGPT | GPT-4 API | ❌ | ❌ | ❌ |
+| **Helix** | Hermes-3 8B local | ✅ | 🔄 pending | ✅ |
+
+The key difference: Helix runs entirely on local hardware with no API costs, uses fitness-gated self-modification with constitutional hard-stops, and is building toward actual weight updates via LoRA.
 
 ---
 
-## Curiosity Engine
-
-The agent autonomously researches questions it generates about itself and the world.  
-**30% of curiosity cycles are self-directed improvement questions:**
-
-```python
-SELF_IMPROVEMENT_SEEDS = [
-    "What Python tools do I wish I had but currently lack?",
-    "What tasks have I failed at recently that I should be able to do?",
-    "What would make me more useful to my user right now?",
-    "What new capability would have the biggest impact on my effectiveness?",
-    "What existing tool of mine is least reliable and how could I fix it?",
-    ...
-]
-```
-
-When a self-directed question fires, the finding is routed to the  
-`SelfImprovementEngine` to inform the next improvement proposal.
-
-After one night: **223 questions researched**, all persisted to `data/curiosity_knowledge.jsonl`.
-
----
-
-## Overnight Results (2026-06-08 22:00 → 2026-06-09 04:21)
-
-- **23 autonomous improvement cycles** executed
-- **13 new tools written and committed** to the codebase
-- **3 syntax errors self-blocked** by constitutional guard (no damage)
-- **1 measurable fitness improvement** (+0.010 from url_reader v2)
-- **223 web research queries** completed autonomously
-- **0 OOM errors**, **0 crashes**, **0 human interventions**
-- GPU temperature: 30–36°C throughout
-- VRAM: stable at ~6.3 GB used
-
----
-
-## Hardware Requirements
-
-| Component | Minimum | Tested On |
-|-----------|---------|-----------|
-| GPU | 12GB VRAM | NVIDIA RTX 3060 12GB |
-| RAM | 16GB | 32GB DDR5 |
-| Storage | 20GB free | NVMe SSD |
-| Python | 3.10+ | 3.12 |
-| CUDA | 11.8+ | 12.x |
-
----
-
-## Setup
-
-```bash
-git clone https://github.com/batteryphil/octa-helix.git
-cd octa-helix/Helix-AGI
-
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-pip install ddgs  # web search backend
-
-# Configure credentials
-cp .env.example .env
-# Add Telegram bot token (optional), HF token for model download
-
-python main.py
-```
-
-Model downloads automatically on first run (~5GB for Hermes-3-Llama-3.1-8B-4bit).
-
----
-
-## Data Files (Generated at Runtime)
-
-| File | Contents |
-|------|---------|
-| `data/evolution_journal.jsonl` | Every self-modification: path, fitness delta, committed/reverted |
-| `data/meta_snapshots.jsonl` | Fitness snapshots every 10 pulses |
-| `data/experience_tuples.jsonl` | (prompt, response, outcome) pairs for LoRA training |
-| `data/curiosity_knowledge.jsonl` | All autonomous web research findings |
-| `data/lora_adapters/` | Fine-tuned LoRA adapters (after 500+ quality examples) |
-
----
-
-## Prior Art & What's Different
-
-| | Voyager (2023) | AutoGPT (2023) | Helix-AGI |
-|---|---|---|---|
-| Model | GPT-4 API | GPT-4 API | **Local 8B 4-bit** |
-| Self-modifies own code | ✅ | ❌ | ✅ |
-| Fitness eval + auto-revert | ❌ | ❌ | ✅ |
-| Constitutional safety | ❌ | ❌ | ✅ |
-| Self-curiosity → proposals | ❌ | ❌ | ✅ |
-| LoRA self-training | ❌ | ❌ | ✅ (pending) |
-| Infinite-run KV management | ❌ | ❌ | ✅ |
-| Consumer GPU | ❌ | ❌ | ✅ |
-
-Voyager ([Wang et al., 2023](https://arxiv.org/abs/2305.16291)) is the closest published precedent —  
-a GPT-4 agent that accumulates a JavaScript skill library in Minecraft.  
-Helix extends this to general Python self-modification with fitness-gated revert,  
-constitutional safety, and a metacognitive monitoring layer — running entirely locally.
-
----
-
-## Status
-
-🟡 **Work in progress — extreme experiment**
-
-The agent-written tools in `tools/` are functional sketches, not production code.  
-The LoRA self-training loop requires 500+ quality experience tuples (accumulating).  
-Fitness signals are still weak (metacognitive monitor needs more data).  
-The core loop (observe → propose → write → evaluate → commit/revert) is **working.**
-
----
-
-## License
-
-AGPL-3.0 — see [LICENSE](LICENSE)
-
----
-
-*"The first machine to ever write code for itself in this repository did so at 22:17 on 2026-06-08.  
-It decided, without being asked, that it needed better performance visibility.  
-It was right."*
+*This README reflects the live system state. The agent reads its own repository via GitHub API as part of its curiosity research.*

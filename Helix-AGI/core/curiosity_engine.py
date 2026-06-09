@@ -78,6 +78,30 @@ WORLD_CURIOSITY_SEEDS = [
     "What does the open source AI community think about local models vs cloud models?",
 ]
 
+# ── Repository research seeds (GitHub API, requires GITHUB_TOKEN) ──────────────
+# Helix reads its own repo FIRST (self-knowledge), then related repos for ideas.
+# These fire via a dedicated repo-research path in _pursue_question().
+REPO_RESEARCH_SEEDS = [
+    # Self first — Helix reads its own source, journal, reflections
+    "github:batteryphil/octa-helix — read my own README and understand my current state",
+    "github:batteryphil/octa-helix — read data/reflections.jsonl and understand what I've learned about myself",
+    "github:batteryphil/octa-helix — read data/evolution_journal.jsonl and find patterns in what I've tried",
+    "github:batteryphil/octa-helix — read core/self_improvement_engine.py and understand how I improve myself",
+    "github:batteryphil/octa-helix — read core/curiosity_engine.py and think about what questions I should be asking",
+    # Related Mamba / architecture repos
+    "github:batteryphil/thalamic-bloom — study the Thalamic Primer SSM graft for ideas to improve my own architecture",
+    "github:batteryphil/mamba2backbonerecursion — study method of training mamba for reasoning — what can I apply?",
+    "github:batteryphil/mamba1and2-to-3 — understand the mamba1/2 to mamba3 conversion method",
+    "github:batteryphil/syrin-pythonmamba — study this Python agent framework with budget control and memory for patterns I could adopt",
+    "github:batteryphil/mambadifftts — understand diffusion+mamba combination techniques",
+    "github:state-spaces/mamba — read the original Mamba architecture source code and understand my own foundations",
+    # Training / evolution repos
+    "github:batteryphil/Primal-Discrete-LLM-Training — study zero-shadow training and prime-grid LUT for efficiency ideas",
+    "github:batteryphil/Trinity-1.58bit-Prime-Harmonic-LLM-Evolution — study prime harmonic weight evolution for compression ideas",
+    # Other
+    "github:batteryphil/handcrafted-persona-engine — study the Live2D/LLM/TTS avatar engine for persona architecture ideas",
+]
+
 
 class CuriosityEngine:
     """
@@ -155,35 +179,49 @@ class CuriosityEngine:
         """Pick or generate the next question to investigate.
         
         Distribution:
-          30% self-directed improvement questions (routed to SIE)
-          30% self-curiosity (architecture, consciousness, cognition)
-          20% world/tech (AI research, science news)
-          20% belief gap derivation
+          25% repo research (self-repo first, then related repos) — GitHub API
+          25% self-directed improvement questions (routed to SIE)
+          25% self-curiosity (architecture, consciousness, cognition)
+          15% world/tech (AI research, science news)
+          10% belief gap derivation
         """
         roll = random.random()
 
-        # 30% chance: self-directed improvement seed
-        if roll < 0.30:
+        # 25% chance: repo research (self first, then others)
+        if roll < 0.25:
+            import os
+            has_token = bool(os.environ.get("GITHUB_TOKEN", "").strip())
+            if has_token:
+                # Prioritise self-repo seeds (first 5 entries)
+                self_repo = [q for q in REPO_RESEARCH_SEEDS[:5] if q not in self._asked]
+                other_repos = [q for q in REPO_RESEARCH_SEEDS[5:] if q not in self._asked]
+                candidates = self_repo or other_repos  # self first, fall back to others
+                if candidates:
+                    self._last_question_is_improvement = False
+                    return candidates[0] if self_repo else random.choice(other_repos)
+
+        # 25% chance: self-directed improvement seed
+        if roll < 0.50:
             candidates = [q for q in SELF_IMPROVEMENT_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = True
                 return random.choice(candidates)
 
-        # 30% chance: question about self
-        if roll < 0.60:
+        # 25% chance: question about self
+        if roll < 0.75:
             candidates = [q for q in SELF_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 20% chance: world/tech question
-        if roll < 0.80:
+        # 15% chance: world/tech question
+        if roll < 0.90:
             candidates = [q for q in WORLD_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 20% chance: derive question from low-confidence beliefs
+        # 10% chance: derive question from low-confidence beliefs
         self._last_question_is_improvement = False
         try:
             all_beliefs = self.beliefs.get_all()
@@ -201,12 +239,18 @@ class CuriosityEngine:
         # Fallback: cycle back to self-seeds
         return random.choice(SELF_CURIOSITY_SEEDS)
 
+
     # ── Research cycle ────────────────────────────────────────────────────────
 
     def _research_question(self, question: str) -> str:
-        """Search the web, read top results in parallel, return findings."""
+        """Search for answers. Routes github: seeds to GitHub API, others to web search."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
+        # ── GitHub repo research ──────────────────────────────────────────────
+        if question.startswith("github:"):
+            return self._research_github_repo(question)
+
+        # ── Standard web search ───────────────────────────────────────────────
         try:
             results = self.web.search_web(question, max_results=4)
             if not results:
@@ -241,6 +285,71 @@ class CuriosityEngine:
             return f"Research failed: {e}"
 
         return "\n\n---\n\n".join(findings)
+
+    def _research_github_repo(self, question: str) -> str:
+        """Fetch content from a GitHub repo using the API token.
+
+        Question format: "github:owner/repo — read path/to/file and do X"
+        Extracts the repo slug and optional file hint, fetches via GitHub API.
+        """
+        import os, re, requests
+
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        if not token:
+            return "GitHub token not available — skipping repo research."
+
+        try:
+            # Parse "github:owner/repo — ..."
+            m = re.match(r"github:([^/\s]+/[^\s—–-]+)\s*[—–-]?\s*(.*)", question)
+            if not m:
+                return f"Could not parse repo from: {question}"
+
+            repo_slug = m.group(1).strip()
+            intent    = m.group(2).strip()
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+
+            # Try to guess a file to read from the intent
+            file_hints = re.findall(r"[\w./]+\.(?:py|md|json|jsonl|txt|yaml|yml)", intent)
+
+            if file_hints:
+                # Fetch specific file
+                path = file_hints[0]
+                url = f"https://api.github.com/repos/{repo_slug}/contents/{path}"
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    import base64
+                    content = base64.b64decode(r.json().get("content", "")).decode("utf-8", errors="replace")
+                    preview = content[:3000]
+                    logger.info(f"[CURIOSITY] GitHub: read {repo_slug}/{path} ({len(content)} chars)")
+                    return f"[GitHub: {repo_slug}/{path}]\n\nIntent: {intent}\n\n{preview}"
+
+            # Fall back: read README
+            for readme in ["README.md", "readme.md", "README.rst"]:
+                url = f"https://api.github.com/repos/{repo_slug}/contents/{readme}"
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    import base64
+                    content = base64.b64decode(r.json().get("content", "")).decode("utf-8", errors="replace")
+                    preview = content[:3000]
+                    logger.info(f"[CURIOSITY] GitHub: read {repo_slug}/{readme} ({len(content)} chars)")
+                    return f"[GitHub: {repo_slug}/{readme}]\n\nIntent: {intent}\n\n{preview}"
+
+            # List repo tree as last resort
+            url = f"https://api.github.com/repos/{repo_slug}/git/trees/HEAD?recursive=1"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                tree = [t["path"] for t in r.json().get("tree", []) if t["type"] == "blob"][:30]
+                return f"[GitHub: {repo_slug} — file tree]\n\nIntent: {intent}\n\n" + "\n".join(tree)
+
+            return f"GitHub API returned {r.status_code} for {repo_slug}"
+
+        except Exception as e:
+            logger.warning(f"[CURIOSITY] GitHub research error: {e}")
+            return f"GitHub research failed: {e}"
 
 
     # ── Curiosity cycle ───────────────────────────────────────────────────────
