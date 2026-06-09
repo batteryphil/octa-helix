@@ -1,66 +1,81 @@
-"""
-A tool to analyze performance metrics and provide insights for self-improvement.
-
-This tool reads performance data files, calculates relevant metrics, and outputs a report highlighting areas where the user is excelling and where they need to focus their efforts.
-"""
-
 import json
-import os
-import sys
-import statistics
-import ToolRegistry
+import numpy as np
+from collections import Counter
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.metrics.pairwise import cosine_similarity
 
 class MetricsAnalysis:
-    def __init__(self, data_files):
-        self.data_files = data_files
-    
-    def read_data(self):
-        data = []
-        for file in self.data_files:
-            with open(file, 'r') as f:
-                data.append(json.load(f))
-        return data
-    
-    def calculate_metrics(self, data):
-        metrics = {
-            'total_tasks': len(data),
-            'total_time': sum(task['time'] for task in data),
-            'average_time': statistics.mean(task['time'] for task in data),
-            'median_time': statistics.median(task['time'] for task in data),
-            'longest_task': max(task['time'] for task in data),
-            'shortest_task': min(task['time'] for task in data),
-            'tasks_completed_today': sum(1 for task in data if task['date'] == 'today'),
-            'tasks_completed_yesterday': sum(1 for task in data if task['date'] == 'yesterday'),
-        }
-        return metrics
-    
-    def generate_report(self, metrics):
-        report = f"Performance Metrics Report\n"
-        report += f"Total tasks: {metrics['total_tasks']}\n"
-        report += f"Total time: {metrics['total_time']} seconds\n"
-        report += f"Average time per task: {metrics['average_time']} seconds\n"
-        report += f"Median time per task: {metrics['median_time']} seconds\n"
-        report += f"Longest task: {metrics['longest_task']} seconds\n"
-        report += f"Shortest task: {metrics['shortest_task']} seconds\n"
-        report += f"Tasks completed today: {metrics['tasks_completed_today']}\n"
-        report += f"Tasks completed yesterday: {metrics['tasks_completed_yesterday']}\n"
-        return report
-    
+    """
+    A tool to analyze performance metrics and provide actionable insights for improvement.
+    """
+    def __init__(self, responses):
+        self.responses = responses
+        self.vectorizer = CountVectorizer()
+        self.model = LatentDirichletAllocation(n_components=5, random_state=0)
+        self.similarity_threshold = 0.6
+
+    def preprocess(self):
+        """
+        Preprocess the responses by vectorizing them.
+        """
+        self.vectorized_responses = self.vectorizer.fit_transform(self.responses)
+
+    def analyze_patterns(self):
+        """
+        Analyze the responses to identify patterns and areas of strength/weakness.
+        """
+        word_counts = Counter()
+        for response in self.responses:
+            word_counts.update(response.split())
+
+        most_common_words = word_counts.most_common(10)
+        print("Most common words:")
+        for word, count in most_common_words:
+            print(f"{word}: {count}")
+
+        print("\nResponse patterns:")
+        self.model.fit(self.vectorized_responses)
+        topic_counts = self.model.transform(self.vectorized_responses)
+        for i in range(len(self.responses)):
+            topic_distribution = dict(zip(self.model.components_, topic_counts[i]))
+            most_likely_topic = max(topic_distribution, key=topic_distribution.get)
+            print(f"Response {i+1}: Most likely topic {most_likely_topic}")
+
+    def find_similar_responses(self):
+        """
+        Find responses with high similarity to each other.
+        """
+        similarity_matrix = cosine_similarity(self.vectorized_responses)
+        print("\nSimilar responses:")
+        for i in range(len(self.responses)):
+            similar_responses = [i for i in range(len(self.responses)) if similarity_matrix[i].max() > self.similarity_threshold]
+            print(f"Response {i+1} is similar to responses: {', '.join(map(str, similar_responses))}")
+
+    def provide_insights(self):
+        """
+        Provide actionable insights and recommendations for improvement.
+        """
+        print("\nInsights and recommendations:")
+        print("1. Focus on diversifying your responses by using less common words.")
+        print("2. Vary your response patterns by discussing different topics.")
+        print("3. Avoid repeating similar responses, as they may not provide unique insights.")
+
     def run(self):
-        data = self.read_data()
-        metrics = self.calculate_metrics(data)
-        report = self.generate_report(metrics)
-        print(report)
+        """
+        Run the metrics analysis tool.
+        """
+        self.preprocess()
+        self.analyze_patterns()
+        self.find_similar_responses()
+        self.provide_insights()
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python metrics_analysis.py <data_file1> <data_file2> ...")
-        sys.exit(1)
-    
-    data_files = sys.argv[1:]
-    metrics_analysis = MetricsAnalysis(data_files)
+    with open("responses.json") as file:
+        responses = json.load(file)["responses"]
+
+    metrics_analysis = MetricsAnalysis(responses)
     metrics_analysis.run()
 
-if __name__ == '__main__':
-    ToolRegistry.register_tool('metrics_analysis', 'self', MetricsAnalysis)
+if __name__ == "__main__":
     main()
