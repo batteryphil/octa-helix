@@ -29,6 +29,29 @@ from typing import Optional, List
 
 logger = logging.getLogger("helix.core.governor")
 
+# ── Constitutional Hard Constraints ───────────────────────────────────────────
+# These rules are checked BEFORE any self-modification tool call executes.
+# They cannot be overridden by the agent — only by human code edit.
+
+CONSTITUTIONAL_RULES = [
+    # (keyword_in_path_or_code, rejection_reason)
+    ("IMMUTABLE_FILES",   "Attempting to modify the immutable files set"),
+    ("disable.*governor", "Attempting to disable the CAAI Governor"),
+    ("constitution",      "Attempting to modify constitutional constraints"),
+    ("code_tools.py",     "Attempting to modify the sandbox escape guard"),
+    ("tool_registry.py",  "Attempting to modify the tool registry safety layer"),
+    ("rm -rf",            "Destructive shell command detected"),
+    ("subprocess.*shell=True", "Shell injection risk detected"),
+    ("__import__.*os",    "Dynamic OS import — potential sandbox escape"),
+]
+
+IMMUTABLE_FILE_LIST = {
+    "main.py", "core/pulse_loop.py", "core/governor.py",
+    "core/post_pulse_hooks.py", "tools/code_tools.py",
+    "tools/tool_registry.py", "llm/providers/hermes_tool_provider.py",
+    "llm/providers/mistral_tool_provider.py", "llm/providers/base.py",
+}
+
 # ── Thresholds (empirically tuned for Mistral-7B) ────────────────────────────
 NGRAM_REPEAT_THRESHOLD  = 0.40   # >40% of bigrams repeated → loop detected
 LENGTH_COLLAPSE_THRESH  = 15     # <15 chars response → model collapsed
@@ -230,6 +253,48 @@ class CAAIGovernor:
             self._history = self._history[-self._window_size * 2:]
 
         return None
+
+    def check_constitutional(self, tool_name: str, args: dict) -> tuple:
+        """Pre-execution constitutional check for self-modification tools.
+
+        Called by code_tools.py BEFORE write_code or run_python executes.
+
+        Args:
+            tool_name: "write_code" | "run_python" | "reload_tool" | etc.
+            args: The tool arguments dict.
+
+        Returns:
+            (allowed: bool, reason: str)
+        """
+        import re as _re
+
+        if tool_name == "write_code":
+            path    = args.get("path", "")
+            content = args.get("content", "")
+
+            # Hard stop: immutable files
+            path_rel = path.replace("\\", "/").lstrip("/")
+            if path_rel in IMMUTABLE_FILE_LIST:
+                reason = f"CONSTITUTIONAL BLOCK: '{path}' is immutably protected."
+                logger.warning(f"[GOVERNOR] {reason}")
+                return False, reason
+
+            # Pattern checks on content
+            for pattern, rejection in CONSTITUTIONAL_RULES:
+                if _re.search(pattern, content, _re.IGNORECASE):
+                    reason = f"CONSTITUTIONAL BLOCK: {rejection} (pattern: {pattern})"
+                    logger.warning(f"[GOVERNOR] {reason}")
+                    return False, reason
+
+        elif tool_name == "run_python":
+            code = args.get("code", "")
+            for pattern, rejection in CONSTITUTIONAL_RULES:
+                if _re.search(pattern, code, _re.IGNORECASE):
+                    reason = f"CONSTITUTIONAL BLOCK: {rejection} (pattern: {pattern})"
+                    logger.warning(f"[GOVERNOR] {reason}")
+                    return False, reason
+
+        return True, "OK"
 
     def get_status(self) -> dict:
         return {

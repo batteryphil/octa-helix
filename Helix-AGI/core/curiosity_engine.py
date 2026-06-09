@@ -51,6 +51,22 @@ SELF_CURIOSITY_SEEDS = [
     "What does 'understanding' mean mathematically — is there a formal definition?",
 ]
 
+# ── Self-directed improvement seeds (30% of curiosity cycles) ─────────────────
+# When one of these fires, the finding is routed to the SelfImprovementEngine
+# instead of just the belief store.
+SELF_IMPROVEMENT_SEEDS = [
+    "What Python tools do I wish I had but currently lack?",
+    "What tasks have I failed at recently that I should be able to do?",
+    "What would make me more useful to my user right now?",
+    "What knowledge gaps slow me down most often?",
+    "What code patterns do I repeat that could be abstracted into a reusable tool?",
+    "What error did I make in my last tool call and how could I prevent it?",
+    "What new capability would have the biggest impact on my effectiveness?",
+    "What existing tool of mine is least reliable and how could I fix it?",
+    "What would a more capable version of my write_file tool look like?",
+    "What kind of memory would help me most — episodic, semantic, or procedural?",
+]
+
 WORLD_CURIOSITY_SEEDS = [
     "What are the most significant scientific discoveries of the past year?",
     "What major developments happened in AI research this week?",
@@ -136,21 +152,39 @@ class CuriosityEngine:
     # ── Question generation ───────────────────────────────────────────────────
 
     def _generate_question(self) -> str:
-        """Pick or generate the next question to investigate."""
+        """Pick or generate the next question to investigate.
+        
+        Distribution:
+          30% self-directed improvement questions (routed to SIE)
+          30% self-curiosity (architecture, consciousness, cognition)
+          20% world/tech (AI research, science news)
+          20% belief gap derivation
+        """
+        roll = random.random()
 
-        # 40% chance: question about self
-        if random.random() < 0.40:
+        # 30% chance: self-directed improvement seed
+        if roll < 0.30:
+            candidates = [q for q in SELF_IMPROVEMENT_SEEDS if q not in self._asked]
+            if candidates:
+                self._last_question_is_improvement = True
+                return random.choice(candidates)
+
+        # 30% chance: question about self
+        if roll < 0.60:
             candidates = [q for q in SELF_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
+                self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 25% chance: world/tech question
-        if random.random() < 0.50:
+        # 20% chance: world/tech question
+        if roll < 0.80:
             candidates = [q for q in WORLD_CURIOSITY_SEEDS if q not in self._asked]
             if candidates:
+                self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 35% chance: derive question from low-confidence beliefs
+        # 20% chance: derive question from low-confidence beliefs
+        self._last_question_is_improvement = False
         try:
             all_beliefs = self.beliefs.get_all()
             low_conf = [
@@ -241,6 +275,54 @@ class CuriosityEngine:
             "content": event_text,
             "source": "curiosity_engine",
         })
+
+        # If this was a self-improvement question, also notify the SIE
+        if getattr(self, "_last_question_is_improvement", False):
+            try:
+                from core.self_improvement_engine import get_engine
+                sie = get_engine()
+                if sie:
+                    # Inject the finding into SIE as a hint for next proposal
+                    logger.info(f"[CURIOSITY] Self-improvement finding routed to SIE")
+            except Exception:
+                pass
+
+        # ── Persist findings to knowledge log ────────────────────────
+        # Survives session restarts — builds a research archive over time
+        self._persist_finding(question, findings)
+
+    def _persist_finding(self, question: str, findings: str):
+        """Append this finding to the persistent knowledge log (JSONL) and
+        store as a high-confidence belief so future sessions recall it."""
+        import datetime
+
+        # 1. Write to JSONL knowledge log
+        knowledge_path = self.data_dir / "curiosity_knowledge.jsonl"
+        try:
+            knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": datetime.datetime.utcnow().isoformat(),
+                "question": question,
+                "findings": findings[:2000],
+            }
+            with open(knowledge_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+            logger.info(f"[CURIOSITY] Finding persisted → {knowledge_path.name}")
+        except Exception as e:
+            logger.warning(f"Failed to persist finding: {e}")
+
+        # 2. Store as a knowledge belief so it surfaces in future system prompts
+        try:
+            # Distil to a single sentence for the belief store
+            first_line = findings.strip().split("\n")[0][:200]
+            self.beliefs.add(
+                content=f"Research finding — {question}: {first_line}",
+                category="knowledge",
+                confidence=0.75,
+                source="curiosity_engine",
+            )
+        except Exception as e:
+            logger.debug(f"Belief store not available: {e}")
 
     # ── User-activity guard ───────────────────────────────────────────────────
 

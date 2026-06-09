@@ -129,6 +129,25 @@ from tools.web_search import WebSearch
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# ── Self-Evolution Modules ───────────────────────────────────────────────────
+try:
+    from core.evolution_journal import init_journal
+    from core.metacognitive_monitor import init_monitor
+    from core.fitness_evaluator import init_evaluator
+    from core.self_improvement_engine import init_engine as init_sie
+    from training.self_trainer import init_trainer
+    _SELF_EVOLVE_AVAILABLE = True
+except ImportError as _se_err:
+    _SELF_EVOLVE_AVAILABLE = False
+    print(f"  [Self-Evolution] Import error: {_se_err}")
+
+# Import code tools to auto-register under toolset='self'
+try:
+    import tools.code_tools  # noqa: F401 — triggers _register() on import
+except Exception as _ct_err:
+    print(f"  [Code Tools] Import error: {_ct_err}")
+
+
 
 
 def on_thought(pulse_number: int, thought: str, events: list):
@@ -505,8 +524,63 @@ def setup_helix(data_dir: str = "data"):
 
         register_hook(_governor_hook, name="caai_governor")
         print("  CAAI Governor: active (collapse detection enabled)")
+
+        # Expose governor globally for constitutional checks in code_tools
+        import sys as _sys
+        _current_module = _sys.modules[__name__]
+        _current_module._governor_instance = governor
+
     except Exception as e:
         print(f"  CAAI Governor: failed to start ({e})")
+
+    # ── Self-Evolution Engines ─────────────────────────────────────────────────
+    if _SELF_EVOLVE_AVAILABLE:
+        try:
+            from core.post_pulse_hooks import register_hook as _rh
+
+            # 1. Evolution Journal
+            evo_journal = init_journal(data_dir=data_path)
+            print(f"  Evolution Journal: {evo_journal.get_stats()['total']} entries loaded")
+
+            # 2. Metacognitive Monitor (post-pulse hook)
+            meta_monitor = init_monitor(data_dir=data_path, belief_store=belief_store)
+            _rh(meta_monitor.observe, name="metacognitive_monitor")
+            print("  Metacognitive Monitor: active (tracks tool_success, hallucination, fitness)")
+
+            # 3. Fitness Evaluator
+            fit_eval = init_evaluator(monitor=meta_monitor)
+            print("  Fitness Evaluator: active")
+
+            # 4. Self-Improvement Engine (background thread, every 10min when idle)
+            sie = init_sie(
+                pulse_loop=pulse_loop,
+                monitor=meta_monitor,
+                evaluator=fit_eval,
+                journal=evo_journal,
+                data_dir=data_path,
+            )
+            sie.start()
+            print("  Self-Improvement Engine: started (proposes & implements improvements every 10min when idle)")
+
+            # 5. Self-Trainer (experience collector hook + LoRA training trigger)
+            trainer = init_trainer(data_dir=data_path)
+            _rh(trainer.collect_experience, name="self_trainer")
+            print(f"  Self-Trainer: active ({trainer.get_stats()['total_collected']} experience tuples so far)")
+
+            # 6. Enable 'self' toolset so code_tools are available to Hermes
+            if hasattr(pulse_loop, "_active_toolsets"):
+                pulse_loop._active_toolsets.add("self")
+                pulse_loop._pending_toolset_rebuild = True
+            print("  Code Tools: registered (read_code, write_code, run_python, run_tests, reload_tool)")
+
+            # 7. Notify SIE on user activity
+            _orig_add_event = pulse_loop.add_event if hasattr(pulse_loop, "add_event") else None
+
+        except Exception as e:
+            print(f"  Self-Evolution: startup error — {e}")
+            import traceback; traceback.print_exc()
+    else:
+        print("  Self-Evolution: disabled (import failed)")
 
     return (pulse_loop, orchestrator, daemon, memory_manager, belief_store,
             scratchpad, telegram_bot, sentinel,
