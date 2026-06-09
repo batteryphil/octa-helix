@@ -147,17 +147,55 @@ class CuriosityEngine:
         self._asked_path = data_dir / "curiosity_asked.json"
         self._load_asked()
 
+        # Self-generated seeds — questions Helix invented itself from research findings
+        # Persisted across restarts so the thread of interest survives.
+        self._self_generated_seeds: List[str] = []
+        self._self_generated_path = data_dir / "self_generated_seeds.jsonl"
+        self._load_self_generated_seeds()
+
         # Curiosity state
         self.current_question: Optional[str] = None
         self.total_questions_asked: int = 0
         self._paused_for_user: bool = False
+        self._last_question_is_improvement: bool = False
 
-        logger.info(f"CuriosityEngine initialized — cycle every {self.interval:.0f}s")
+        logger.info(f"CuriosityEngine initialized — cycle every {self.interval:.0f}s, "
+                    f"{len(self._self_generated_seeds)} self-generated seeds loaded")
+
+    def _load_self_generated_seeds(self):
+        """Load questions Helix generated itself from past research findings."""
+        if not self._self_generated_path.exists():
+            return
+        try:
+            seeds = []
+            with open(self._self_generated_path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                        q = d.get("question", "").strip()
+                        if q and q not in self._asked:
+                            seeds.append(q)
+                    except Exception:
+                        pass
+            self._self_generated_seeds = seeds[-200:]  # keep last 200
+            logger.info(f"[CURIOSITY] Loaded {len(self._self_generated_seeds)} self-generated seeds")
+        except Exception as e:
+            logger.warning(f"[CURIOSITY] Failed to load self-generated seeds: {e}")
+
+    def _save_self_generated_seed(self, question: str):
+        """Persist a new self-generated question to disk."""
+        import datetime
+        try:
+            self._self_generated_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {"ts": datetime.datetime.utcnow().isoformat(), "question": question}
+            with open(self._self_generated_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.warning(f"[CURIOSITY] Failed to save self-generated seed: {e}")
 
     def set_pulse_loop(self, pulse_loop):
         """Wire up the pulse loop reference after construction."""
         self._pulse_loop = pulse_loop
-
 
     def _load_asked(self):
         if self._asked_path.exists():
@@ -400,6 +438,14 @@ class CuriosityEngine:
         # Survives session restarts — builds a research archive over time
         self._persist_finding(question, findings)
 
+        # ── Generate a self-invented follow-up question ───────────────
+        # Helix picks the next thing it wants to know — independent of seeds
+        followup = self._generate_followup_question(question, findings)
+        if followup:
+            self._self_generated_seeds.append(followup)
+            self._save_self_generated_seed(followup)
+            logger.info(f"[CURIOSITY] Self-generated question: {followup[:80]}")
+
     def _persist_finding(self, question: str, findings: str):
         """Append this finding to the persistent knowledge log (JSONL) and
         store as a high-confidence belief so future sessions recall it."""
@@ -422,7 +468,6 @@ class CuriosityEngine:
 
         # 2. Store as a knowledge belief so it surfaces in future system prompts
         try:
-            # Distil to a single sentence for the belief store
             first_line = findings.strip().split("\n")[0][:200]
             self.beliefs.add(
                 content=f"Research finding — {question}: {first_line}",
@@ -432,6 +477,53 @@ class CuriosityEngine:
             )
         except Exception as e:
             logger.debug(f"Belief store not available: {e}")
+
+    def _generate_followup_question(self, question: str, findings: str) -> Optional[str]:
+        """Ask Hermes: given what I just learned, what new question does this raise?
+
+        This is the core of independent curiosity — Helix generates its own
+        follow-up threads based on what it actually found interesting, not
+        what we told it to ask.
+
+        Deliberately lightweight: no tool calls, short prompt, 60 token budget.
+        Returns a single question string, or None if generation fails.
+        """
+        if self._pulse_loop is None:
+            return None
+        try:
+            session = getattr(self._pulse_loop, "_chat", None)
+            if session is None:
+                return None
+
+            prompt = (
+                f"You just researched this question:\n"
+                f"  '{question}'\n\n"
+                f"Key finding (first 400 chars):\n"
+                f"  {findings[:400]}\n\n"
+                f"In ONE sentence, what is the single most interesting NEW question "
+                f"this raises that you want to explore next? "
+                f"Be specific. Do not repeat the original question. "
+                f"Output ONLY the question, nothing else."
+            )
+
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            raw = session.send_message(prompt, budget=60, is_autonomous=True)
+            followup = raw.strip().strip('"').strip("'").strip()
+
+            # Sanity checks — must look like a question
+            if not followup or len(followup) < 15 or len(followup) > 300:
+                return None
+            if followup in self._asked or followup in self._self_generated_seeds:
+                return None
+
+            return followup
+
+        except Exception as e:
+            logger.debug(f"[CURIOSITY] Followup generation failed: {e}")
+            return None
 
     # ── User-activity guard ───────────────────────────────────────────────────
 
