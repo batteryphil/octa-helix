@@ -890,6 +890,35 @@ class PulseLoop:
                 f"\nYour last thought: {self._previous_thoughts[:300]}"
             )
 
+        # ── Active Tool Mandate (every 3rd autonomous pulse) ──────────────────
+        # Gemini Pro analysis: tool_call_rate=0% means all tools are decorative.
+        # The agent must be forced to EXECUTE tools, not just write them.
+        # Every 3rd pulse: pick a tool from registry and mandate its use.
+        if self._pulse_count % 3 == 0:
+            try:
+                from tools.tool_registry import registry
+                available = registry.list_tools(self._active_toolsets)
+                if available:
+                    import random
+                    # Pick a tool that seems actionable for self-monitoring
+                    preferred = [t for t in available if any(
+                        k in t.lower() for k in
+                        ["health", "search", "note", "task", "belief", "memory",
+                         "system", "metric", "novelty", "error", "url"]
+                    )]
+                    tool_name = random.choice(preferred) if preferred else random.choice(available)
+                    parts.append(
+                        f"\n[ACTIVE PULSE — TOOL REQUIRED]\n"
+                        f"You must call at least one tool before completing this thought. "
+                        f"Suggested: [{tool_name.upper()}:] — but choose whichever tool "
+                        f"is most relevant to your current goal or belief state. "
+                        f"Review your beliefs, check system state, search for something "
+                        f"you're curious about, or validate a hypothesis. "
+                        f"Do not complete this pulse with prose only."
+                    )
+            except Exception:
+                pass
+
         return "\n".join(parts)
 
     # ── Chat Session Management ──────────────────────────────────────

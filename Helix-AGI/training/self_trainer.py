@@ -81,33 +81,63 @@ class SelfTrainer:
         return (time.time() - self._last_user_activity) > IDLE_REQUIRED
 
     def collect_experience(self, ctx) -> None:
-        """Collect one experience tuple from a post-pulse context."""
+        """Collect one experience tuple — STRICT QUALITY GATE applied.
+
+        Gemini Pro analysis (Q4): If we fine-tune on 500 tuples of the agent
+        failing to use tools and looping on error logs, we permanently bake
+        that incompetence into the weights.
+
+        A tuple is only recorded if it meets AT LEAST 2 of these 3 criteria:
+          1. fitness_delta > 0.05   (action demonstrably improved the system)
+          2. tool_execution_success (a tool was called and returned non-error)
+          3. novel_belief_generated (verified new belief added to BeliefStore)
+
+        Prose-only, error-only, and Δ=0 tuples are discarded.
+        It is better to take 2 weeks to collect 500 high-quality tuples than
+        to ruin the base model in 2 days.
+        """
         try:
-            thought = getattr(ctx, "thought", "") or ""
+            thought    = getattr(ctx, "thought", "") or ""
             tool_calls = getattr(ctx, "tool_calls", []) or []
 
             if not thought:
                 return
 
-            # Determine outcome
-            if tool_calls:
-                outcome = "tool_executed"
-                tool_name = tool_calls[0].get("name", "") if tool_calls else ""
-                quality = 0.9
-            elif any(w in thought.lower() for w in ["i wrote", "i created", "i saved", "i completed"]):
-                outcome = "hallucination"
-                tool_name = ""
-                quality = 0.1
-            elif "error" in thought.lower() or "failed" in thought.lower():
-                outcome = "error"
-                tool_name = ""
-                quality = 0.2
-            else:
-                outcome = "prose"
-                tool_name = ""
-                quality = 0.5
+            # ── Criterion 1: tool execution success ───────────────────────
+            tool_executed = bool(tool_calls)
+            tool_name     = tool_calls[0].get("name", "") if tool_calls else ""
+            tool_result   = tool_calls[0].get("result", "") if tool_calls else ""
+            tool_success  = (
+                tool_executed
+                and "error" not in str(tool_result).lower()[:100]
+                and "failed" not in str(tool_result).lower()[:100]
+                and "traceback" not in str(tool_result).lower()[:100]
+            )
 
-            # Get pulse message for prompt reconstruction
+            # ── Criterion 2: novel belief generated ───────────────────────
+            novel_belief = getattr(ctx, "novel_belief_added", False)
+
+            # ── Criterion 3: fitness delta (from SIE context if available) ─
+            fitness_delta = getattr(ctx, "last_fitness_delta", 0.0) or 0.0
+            significant_gain = fitness_delta > 0.05
+
+            # ── Quality gate: must meet ≥2 of 3 criteria ─────────────────
+            criteria_met = sum([tool_success, novel_belief, significant_gain])
+            if criteria_met < 2:
+                # Discard — not good enough to train on
+                return
+
+            # ── Determine outcome and quality ─────────────────────────────
+            if tool_success:
+                outcome = "tool_executed"
+                quality = 0.7 + (0.15 * significant_gain) + (0.15 * novel_belief)
+            elif novel_belief:
+                outcome = "novel_belief"
+                quality = 0.6 + (0.2 * significant_gain)
+            else:
+                outcome = "fitness_gain"
+                quality = 0.6
+
             pulse_msg = getattr(ctx, "events", "") or ""
             if not pulse_msg:
                 return
@@ -118,7 +148,7 @@ class SelfTrainer:
                 response=thought[:500],
                 outcome=outcome,
                 tool_name=tool_name,
-                quality=quality,
+                quality=round(quality, 3),
                 user_sentiment="neutral",
             )
 
@@ -126,15 +156,21 @@ class SelfTrainer:
                 self._buffer.append(tup)
                 self._total_collected += 1
 
-            # Flush buffer to disk every 50 tuples
-            if len(self._buffer) >= 50:
+            logger.info(
+                f"[trainer] Quality tuple accepted: outcome={outcome} "
+                f"quality={quality:.2f} criteria={criteria_met}/3 "
+                f"(tool={tool_success} belief={novel_belief} gain={significant_gain})"
+            )
+
+            # Flush buffer to disk every 10 tuples (fewer, higher quality)
+            if len(self._buffer) >= 10:
                 self._flush_buffer()
 
             # Check if we have enough for training
             if (self._total_collected % EXPERIENCE_THRESHOLD == 0
                     and self._total_collected > 0
                     and not self._training_active):
-                logger.info(f"[trainer] {self._total_collected} tuples collected — scheduling training")
+                logger.info(f"[trainer] {self._total_collected} quality tuples — scheduling training")
                 self._schedule_training()
 
         except Exception as e:
