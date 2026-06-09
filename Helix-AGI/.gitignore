@@ -1,5 +1,7 @@
-# Runtime data
+# Runtime data — exclude most but track self-evolution records
 data/
+!data/evolution_journal.jsonl
+!data/meta_snapshots.jsonl
 *.db
 *.sqlite3
 memory_store/
