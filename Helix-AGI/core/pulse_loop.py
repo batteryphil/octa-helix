@@ -809,6 +809,33 @@ class PulseLoop:
         if self._thought_callback:
             self._thought_callback(self._pulse_count, thought, events)
 
+        # 10. Auto-emit to chat when user triggered this pulse
+        #     The [REPLY:] function-call path is unreliable with local Hermes
+        #     inference because the model doesn't reliably emit tool calls for
+        #     every user message. Instead: if this pulse had user_message events,
+        #     push the thought directly to dashboard outbound so the user always
+        #     gets a response. Filter out autonomous monologue phrases.
+        has_user_event = any(
+            "They said:" in e or "is talking to me" in e
+            for e in events
+        )
+        if has_user_event and thought:
+            clean_thought = thought.strip().lstrip("*").strip()
+            # Skip pure monologue / tool mandate boilerplate
+            skip_phrases = [
+                "no new events",
+                "my last thought aligns",
+                "[active pulse",
+                "i'll continue monitoring",
+            ]
+            if not any(p in clean_thought.lower() for p in skip_phrases):
+                try:
+                    from dashboard.dashboard_comms import get_comms
+                    get_comms().push_outbound("User", clean_thought)
+                    logger.info(f"[chat] Auto-emitted response to User ({len(clean_thought)} chars)")
+                except Exception as _e:
+                    logger.debug(f"[chat] Auto-emit failed: {_e}")
+
         logger.debug(
             f"Pulse {self._pulse_count} ({self._state}): "
             f"{len(events)} events → {len(thought)} chars thought"
