@@ -1,65 +1,64 @@
 """
-A simple task tracker that allows users to set, update, and view their personal goals or tasks.
+A simple task tracker that allows you to manage tasks with descriptions, due dates, and progress markers.
 """
 
 import json
-import os
-from dataclasses import dataclass, fields
-from typing import Any, List
-
-import toolset
-
-@dataclass
-class Task:
-    name: str
-    description: str
-    due_date: str
-    completed: bool = False
-
-    def __str__(self) -> str:
-        return f"{self.name} - {self.description} (Due: {self.due_date}, Completed: {'Yes' if self.completed else 'No'})"
+import datetime
+from collections import defaultdict
 
 class TaskTracker:
     def __init__(self):
-        self.tasks: List[Task] = []
+        self.tasks = []
 
-    def add_task(self, task: Task):
-        self.tasks.append(task)
-
-    def update_task(self, index: int, task: Task):
-        if 0 <= index < len(self.tasks):
-            self.tasks[index] = task
-        else:
-            raise IndexError("Index out of range")
-
-    def remove_task(self, index: int):
-        if 0 <= index < len(self.tasks):
-            del self.tasks[index]
-        else:
-            raise IndexError("Index out of range")
-
-    def view_tasks(self):
-        return self.tasks
-
-    def save(self, filename: str):
-        with open(filename, 'w') as f:
-            json.dump([dict(field.name for field in fields(Task)), *[
-                dict(to_dict(task) for task in self.tasks)
-            ]], f, indent=2)
-
-    def load(self, filename: str):
-        if not os.path.exists(filename):
-            return
-        with open(filename, 'r') as f:
-            data = json.load(f)
-            self.tasks = [Task(**{field.name: value for field, value in field.items()} ) for field in data[1:]]
-
-    def to_dict(self, task: Task) -> dict:
-        return {
-            field.name: getattr(task, field.name) for field in fields(Task)
+    def add_task(self, description, due_date=None):
+        task = {
+            "id": len(self.tasks),
+            "description": description,
+            "due_date": due_date,
+            "completed": False
         }
+        self.tasks.append(task)
+        return task
 
-    def from_dict(cls, data: dict) -> Task:
-        return Task(**data)
+    def update_task(self, task_id, description=None, due_date=None, completed=None):
+        task = next((t for t in self.tasks if t["id"] == task_id), None)
+        if task:
+            if description:
+                task["description"] = description
+            if due_date:
+                task["due_date"] = due_date
+            if completed is not None:
+                task["completed"] = completed
+            return task
+        return None
 
-toolset.register_tool('task_tracker', TaskTracker)
+    def complete_task(self, task_id):
+        task = next((t for t in self.tasks if t["id"] == task_id), None)
+        if task:
+            task["completed"] = True
+            return task
+        return None
+
+    def delete_task(self, task_id):
+        self.tasks = [t for t in self.tasks if t["id"] != task_id]
+
+    def save(self, filename):
+        with open(filename, "w") as f:
+            json.dump(self.tasks, f)
+
+    def load(self, filename):
+        with open(filename, "r") as f:
+            self.tasks = json.load(f)
+
+def main():
+    tracker = TaskTracker()
+    tracker.add_task("Buy groceries", due_date="2023-04-01")
+    tracker.add_task("Finish project report", due_date="2023-04-15")
+    tracker.update_task(0, description="Buy milk, eggs, bread")
+    tracker.complete_task(0)
+    tracker.save("tasks.json")
+    tracker.load("tasks.json")
+    print(tracker.tasks)
+
+if __name__ == "__main__":
+    main()
