@@ -116,6 +116,15 @@ class Preconscious:
         lexicon_keys = set(self._lexicon_lookup.keys())
         self._concept_extractor = ConceptExtractor(lexicon_keys=lexicon_keys)
 
+        # Context providers registered by main.py (name → callable, priority)
+        self._context_providers: list = []
+
+    def register_context_provider(self, name: str, fn, priority: int = 99):
+        """Register a callable that returns an extra context string each pulse."""
+        self._context_providers.append((priority, name, fn))
+        self._context_providers.sort(key=lambda x: x[0])
+        logger.info(f"Context provider registered: {name} (priority={priority})")
+
     def _load_lexicon(self):
         """Load lexicon.json and build a case-insensitive term→entry lookup.
 

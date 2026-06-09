@@ -27,6 +27,8 @@ import sys
 import json
 import time
 import re
+import socket
+import torch
 from pathlib import Path
 from typing import Optional, List, Dict
 
@@ -117,7 +119,8 @@ class TitanSession(ChatSession):
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
         self.enable_deep_think = enable_deep_think
-
+        self.checkpoint = checkpoint
+        self.is_non_fc_model = True
         self.history: List[Dict[str, str]] = []
         self._engine = None  # lazy-loaded on first send_message()
         self._checkpoint = checkpoint
@@ -132,11 +135,56 @@ class TitanSession(ChatSession):
         if self._engine is not None:
             return
         try:
-            from titan_inference import TitanInference
-            logger.info("Loading Titan 2.7B MIMO model into GPU memory...")
-            self._engine = TitanInference(checkpoint=self._checkpoint)
-            self._engine.load()
-            logger.info("Titan loaded successfully ✓")
+            from titan_inference import get_engine
+            logger.info("Reusing pre-loaded Titan singleton from VRAM...")
+            self._engine = get_engine(self._checkpoint)
+            logger.info("Titan engine ready ✓")
+            
+            # Setup UDP telemetry for direct neural feed
+            self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._udp_addr = ("127.0.0.1", 5051) # Dashboard
+            self._udp_addr_sentinel = ("127.0.0.1", 5052) # StabilitySentinel
+            
+            # Setup Manifold Projection Matrix
+            device = self._engine.model.lm_head.weight.device
+            d_model = self._engine.model.d_model
+            self._W_proj = torch.nn.Linear(d_model, 8, bias=False).to(device)
+            torch.nn.init.orthogonal_(self._W_proj.weight)
+            self._W_proj.requires_grad_(False)
+            
+            # Register forward hook on norm_f (last layer before LM head)
+            def telemetry_hook(module, inputs, output):
+                with torch.no_grad():
+                    # output shape: [B, L, d_model] -> get last token
+                    hidden_state = output[:, -1, :].float()
+                    
+                    # 1. Entropy Extraction (\Omega)
+                    p = torch.nn.functional.softmax(hidden_state, dim=-1)
+                    entropy = -(p * torch.log(p + 1e-9)).sum(dim=-1).mean().item()
+                    max_entropy = torch.log(torch.tensor(d_model, dtype=torch.float32)).item()
+                    omega = entropy / max_entropy
+                    
+                    # 2. Manifold Projection
+                    # Ensure W_proj is on the exact same device and dtype as hidden_state
+                    if self._W_proj.weight.device != hidden_state.device or self._W_proj.weight.dtype != hidden_state.dtype:
+                        self._W_proj = self._W_proj.to(device=hidden_state.device, dtype=hidden_state.dtype)
+                    coords = self._W_proj(hidden_state).squeeze(0).tolist()
+                    
+                    # 3. Fire-and-forget UDP telemetry
+                    payload = json.dumps({
+                        "type": "telemetry",
+                        "omega": round(omega, 4),
+                        "manifold_8d": [round(c, 4) for c in coords]
+                    }).encode('utf-8')
+                    try:
+                        self._udp_sock.sendto(payload, self._udp_addr)
+                        self._udp_sock.sendto(payload, self._udp_addr_sentinel)
+                    except Exception:
+                        pass
+                        
+            self._engine.model.norm_f.register_forward_hook(telemetry_hook)
+            logger.info("Attached Lagrangian Sentinel telemetry hook.")
+            
         except Exception as e:
             logger.error(f"Failed to load Titan: {e}")
             raise RuntimeError(
@@ -183,6 +231,8 @@ class TitanSession(ChatSession):
             )
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             logger.error(f"Titan generation error: {e}")
             response = f"[Titan internal error: {str(e)[:120]}]"
 
@@ -202,13 +252,38 @@ class TitanSession(ChatSession):
 
     # ── Prompt assembly ───────────────────────────────────────────────────────
     def _build_prompt(self) -> str:
-        """Assemble a flat prompt string from system instruction + history."""
-        parts = [f"[SYSTEM]\n{self.system_instruction}\n[/SYSTEM]\n"]
-        for msg in self.history:
-            role = msg["role"].capitalize()
-            parts.append(f"{role}: {msg['content']}")
-        parts.append("Assistant:")
-        return "\n".join(parts)
+        """Assemble a flat prompt using the exact training format.
+        
+        The model was trained on allenai/big-reasoning-traces with format:
+            User: <question>
+            Assistant: <think>
+        
+        The [SYSTEM]...[/SYSTEM] wrapper was never seen during training.
+        Passing it causes the model to treat it as continuation text and
+        output garbage. Only the last user turn is used as the prompt.
+        The small 1.4B model cannot follow a complex system prompt anyway.
+        """
+        # Extract just the last user message from history
+        last_user_msg = ""
+        for msg in reversed(self.history):
+            if msg["role"] == "user":
+                last_user_msg = msg["content"]
+                break
+        
+        # Strip the giant helix system injection — use only the raw user message.
+        # The system prompt was causing the model to output medical/scientific gibberish
+        # because it was treating the Lagrangian telemetry as text to continue.
+        # Extract just the user's actual chat message if present.
+        # The pulse message format is: "[HH:MM:SS] User is talking... They said: \"<msg>\""
+        import re
+        chat_match = re.search(r'They said: "(.+?)"', last_user_msg, re.DOTALL)
+        if chat_match:
+            user_text = chat_match.group(1).strip()
+        else:
+            # Fallback: use the raw message, truncated to 200 chars
+            user_text = last_user_msg.strip()[-200:]
+        
+        return f"User: {user_text}\nAssistant: <think>\n"
 
     # ── Replay buffer ─────────────────────────────────────────────────────────
     def _log_replay(self, prompt: str, response: str, profile: str):

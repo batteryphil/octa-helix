@@ -167,11 +167,19 @@ class ChannelRouter:
 
     # ── Routing ───────────────────────────────────────────────────────
 
+    def _mirror_to_dashboard(self, recipient: str, message: str):
+        try:
+            from dashboard.dashboard_comms import get_comms
+            get_comms().push_outbound(recipient, message)
+        except Exception as e:
+            logger.debug(f"Dashboard mirror failed: {e}")
+
     def route_reply(self, recipient: str, message: str) -> bool:
         """Route a [REPLY:name] message — uses last inbound channel.
 
         Falls back to default channel if no recent inbound.
         """
+        self._mirror_to_dashboard(recipient, message)
         inbound = self._get_last_inbound(recipient)
         if inbound:
             channel = inbound["channel"]
@@ -185,10 +193,13 @@ class ChannelRouter:
 
         # No recent inbound — fall back to default
         logger.info(f"[REPLY:{recipient}] no recent inbound, falling back to default")
-        return self.route_message(recipient, message)
+        return self.route_message(recipient, message, skip_mirror=True)
 
-    def route_message(self, recipient: str, message: str) -> bool:
+    def route_message(self, recipient: str, message: str, skip_mirror: bool = False) -> bool:
         """Route a [MESSAGE:name] message — uses person's default channel."""
+        if not skip_mirror:
+            self._mirror_to_dashboard(recipient, message)
+        
         contact = self.resolve_contact(recipient)
         if not contact:
             logger.warning(f"No contact found for '{recipient}'")
@@ -229,6 +240,8 @@ class ChannelRouter:
 
     def route_explicit(self, recipient: str, message: str, channel: str) -> bool:
         """Route via an explicitly specified channel (e.g. [TELEGRAM:name])."""
+        self._mirror_to_dashboard(recipient, message)
+        
         contact = self.resolve_contact(recipient)
         if not contact:
             logger.warning(f"No contact for '{recipient}' on {channel}")

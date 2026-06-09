@@ -22,6 +22,7 @@ import time
 import json
 import logging
 import threading
+import socket
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable
@@ -150,7 +151,36 @@ class StabilitySentinel:
             name="stability-sentinel",
         )
         self._thread.start()
+        
+        # Start direct neural telemetry listener
+        self._telemetry_thread = threading.Thread(
+            target=self._telemetry_listener,
+            daemon=True,
+            name="sentinel-telemetry",
+        )
+        self._telemetry_thread.start()
+        
         logger.info(f"Stability Sentinel started (interval={self.probe_interval}s)")
+
+    def _telemetry_listener(self):
+        """Background thread that listens for high-frequency neural telemetry via UDP."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 5052))
+        sock.settimeout(1.0)
+        while self._running:
+            try:
+                data, _ = sock.recvfrom(4096)
+                payload = json.loads(data.decode("utf-8"))
+                if payload.get("type") == "telemetry":
+                    if "omega" in payload:
+                        self.omega = payload["omega"]
+                    if "manifold_8d" in payload:
+                        self.current_manifold_8d = payload["manifold_8d"]
+            except socket.timeout:
+                continue
+            except Exception:
+                pass
+        sock.close()
 
     def stop(self):
         """Stop the sentinel thread and persist state."""
