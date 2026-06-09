@@ -317,7 +317,16 @@ class PulseLoop:
         return f"[{timestamp}] [{event_type}] {data}"
 
     def _drain_events(self) -> List[str]:
-        """Grab all queued events."""
+        """Grab all queued events.
+
+        Waits a short settle period when woken by user_interrupt to ensure
+        any in-flight emit() calls land in the queue before we drain it.
+        This prevents the race where a dashboard message arrives milliseconds
+        after the wake signal but before the drain, causing it to be missed.
+        """
+        if self._user_interrupt.is_set():
+            time.sleep(0.05)   # 50ms settle — lets in-flight emit() complete
+            self._user_interrupt.clear()
         with self._event_lock:
             events = self._event_queue.copy()
             self._event_queue.clear()
