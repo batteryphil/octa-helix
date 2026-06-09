@@ -38,6 +38,7 @@ logger = logging.getLogger("helix.core.self_improvement")
 IMPROVEMENT_INTERVAL = 600    # 10 min between cycles
 EVAL_WAIT_SECONDS    = 300    # 5 min after implementation before eval
 IDLE_REQUIRED        = 120    # 2 min of no user activity required
+REFLECT_EVERY        = 10    # reflection review every N cycles
 
 
 # ── Constitutional hard stops ──────────────────────────────────────────────────
@@ -81,6 +82,7 @@ class SelfImprovementEngine:
         self._thread: Optional[threading.Thread] = None
         self._last_user_activity = time.time()
         self._cycle_count = 0
+        self._last_reflection: Optional[Dict] = None   # most recent strategic review
 
     def set_pulse_loop(self, pl):
         self._pulse_loop = pl
@@ -164,12 +166,26 @@ class SelfImprovementEngine:
                 + "\nPropose something COMPLETELY DIFFERENT.\n"
             )
 
+        # Inject last strategic reflection to guide direction
+        reflection_note = ""
+        if self._last_reflection:
+            r = self._last_reflection
+            reflection_note = (
+                f"\n[Strategic Reflection from cycle {r.get('cycle','?')}]\n"
+                f"  What worked: {r.get('what_worked','unknown')}\n"
+                f"  What failed: {r.get('what_failed','unknown')}\n"
+                f"  Priority next: {r.get('priority_next','unknown')}\n"
+                f"  Satisfaction: {r.get('goal_satisfaction','unknown')}\n"
+                f"Use this to guide your proposal — build on what worked, avoid what failed.\n"
+            )
+
         prompt = f"""You are analyzing your own performance metrics to identify the single highest-impact self-improvement you can make right now.
 
 {perf_text}
 
 {journal_text}
 {already_note}
+{reflection_note}
 Available self-modification tools:
 - write_code(path, content): Create or modify Python files in the project
 - run_python(code): Test code before deploying it
@@ -449,6 +465,108 @@ Fix the error. Key rules:
             )
             self._journal.record(entry)
 
+    def _reflect_on_progress(self):
+        """
+        Strategic meta-review every REFLECT_EVERY cycles.
+        Reads the full journal history, evaluates patterns, identifies
+        what worked/failed, sets priority direction for next N cycles.
+        Saves reflection to data/reflections.jsonl and injects into proposals.
+        """
+        logger.info(f"[SIE] === Strategic Reflection (cycle {self._cycle_count}) ===")
+
+        # Gather all journal entries
+        entries = []
+        if self._journal:
+            entries = self._journal.get_recent(self._cycle_count + 5)
+
+        # Gather fitness snapshots
+        fitness_trend = "No fitness data yet"
+        snap_path = self._data_dir / "meta_snapshots.jsonl"
+        if snap_path.exists():
+            try:
+                snaps = []
+                for line in snap_path.read_text().strip().splitlines():
+                    if line:
+                        s = json.loads(line)
+                        import datetime
+                        ts = datetime.datetime.fromtimestamp(s['ts']).strftime('%H:%M')
+                        snaps.append(f"[{ts}] fitness={s['composite_fitness']:.3f}")
+                fitness_trend = " → ".join(snaps[-5:]) if snaps else "No data"
+            except Exception:
+                pass
+
+        # Summarise journal for Hermes
+        passed = [e for e in entries if e.get('committed') and e.get('test_result') == 'PASS']
+        failed = [e for e in entries if 'FAIL' in str(e.get('test_result', ''))]
+        reverted = [e for e in entries if not e.get('committed')]
+        all_paths = list({e['path'] for e in entries if e.get('path')})
+
+        journal_summary = (
+            f"Total cycles: {self._cycle_count}\n"
+            f"Committed tools: {len(passed)} — {[e['path'] for e in passed[-5:]]}\n"
+            f"Failed writes: {len(failed)} — {[e.get('error','')[:40] for e in failed[-3:]]}\n"
+            f"Reverted (fitness drop): {len(reverted)}\n"
+            f"Fitness trend: {fitness_trend}\n"
+            f"All modified paths: {all_paths}"
+        )
+
+        prompt = f"""You are Helix performing a strategic self-review after {self._cycle_count} improvement cycles.
+
+Here is a summary of everything you have done:
+{journal_summary}
+
+Reflect carefully and answer these questions honestly:
+1. What has actually worked? (which tools improved fitness or enabled new capability?)
+2. What has consistently failed? (syntax errors, bad imports, wasted cycles?)
+3. Are my goals being met? What is still missing?
+4. What should be the #1 priority for the next {REFLECT_EVERY} cycles?
+5. On a scale of 0-10, how satisfied are you with progress so far and why?
+
+Respond with ONLY valid JSON:
+{{
+  "cycle": {self._cycle_count},
+  "what_worked": "brief description",
+  "what_failed": "brief description",
+  "goal_satisfaction": "X/10 — reason",
+  "priority_next": "specific thing to focus on next N cycles",
+  "strategic_note": "one insight about how to improve the improvement process itself"
+}}"""
+
+        raw = self._call_hermes(prompt, max_tokens=300)
+        reflection = None
+        if raw and '(OOM' not in raw and '(generation error' not in raw:
+            try:
+                m = re.search(r'\{[^{}]*"cycle"[^{}]*\}', raw, re.DOTALL)
+                if m:
+                    reflection = json.loads(m.group())
+                else:
+                    reflection = json.loads(raw)
+            except Exception:
+                # Store raw as freeform note
+                reflection = {
+                    "cycle": self._cycle_count,
+                    "raw_reflection": raw[:500],
+                    "what_worked": "(see raw)",
+                    "what_failed": "(see raw)",
+                    "priority_next": "(see raw)",
+                    "goal_satisfaction": "unknown",
+                    "strategic_note": "",
+                }
+
+        if reflection:
+            self._last_reflection = reflection
+            # Persist to disk
+            ref_path = self._data_dir / "reflections.jsonl"
+            ref_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(ref_path, "a") as f:
+                f.write(json.dumps({"ts": time.time(), **reflection}) + "\n")
+            logger.info(
+                f"[SIE] Reflection saved — satisfaction: {reflection.get('goal_satisfaction','?')} | "
+                f"priority: {reflection.get('priority_next','?')[:60]}"
+            )
+        else:
+            logger.warning("[SIE] Reflection generation failed or OOM — skipping")
+
     def _loop(self):
         """Background thread main loop."""
         logger.info("[SIE] Self-improvement engine started")
@@ -459,6 +577,9 @@ Fix the error. Key rules:
             if self._is_idle():
                 try:
                     self._run_cycle()
+                    # Strategic reflection every REFLECT_EVERY cycles
+                    if self._cycle_count > 0 and self._cycle_count % REFLECT_EVERY == 0:
+                        self._reflect_on_progress()
                 except Exception as e:
                     logger.error(f"[SIE] Cycle error: {e}", exc_info=True)
             else:
