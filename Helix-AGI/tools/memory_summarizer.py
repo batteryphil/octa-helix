@@ -1,50 +1,51 @@
-"""
-A tool to compress old memories by generating concise summaries.
-
-This tool analyzes old memories, identifies patterns and key information, and generates concise summaries to replace the full memories. This allows the system to retain the essential context while reducing the storage footprint.
-"""
-
 import json
-from typing import List, Dict
-from collections import Counter
-from functools import reduce
-from itertools import chain
+import re
+from pathlib import Path
+from bs4 import BeautifulSoup
+import requests
+import psutil
 
 class MemorySummarizer:
-    def __init__(self, memories: List[Dict]):
+    def __init__(self, memories):
         self.memories = memories
 
-    def summarize(self) -> List[Dict]:
-        # Extract all words from all memories
-        all_words = list(chain.from_iterable([list(m['content'].values()) for m in self.memories]))
-
-        # Count word frequencies
-        word_counts = Counter(all_words)
-
-        # Get the most common words
-        common_words = [w for w, c in word_counts.most_common(10)]
-
-        # Replace each memory with a summary
-        summaries = []
+    def analyze_memories(self):
+        patterns = []
+        insights = []
         for memory in self.memories:
-            summary = {}
-            for key, value in memory.items():
-                if key != 'summary':
-                    summary[key] = ' '.join([w for w in value.split() if w not in common_words])
-            summary['summary'] = ' '.join(common_words)
-            summaries.append(summary)
+            patterns.extend(self.extract_patterns(memory))
+            insights.extend(self.extract_insights(memory))
+        return patterns, insights
 
-        return summaries
+    def extract_patterns(self, memory):
+        # Placeholder function to extract patterns from memory
+        return []
 
-def main():
-    with open('memories.json') as f:
-        memories = json.load(f)['memories']
+    def extract_insights(self, memory):
+        # Placeholder function to extract insights from memory
+        return []
 
-    summarizer = MemorySummarizer(memories)
-    summarized_memories = summarizer.summarize()
+    def generate_summary(self, patterns, insights):
+        summary = {
+            "patterns": patterns,
+            "insights": insights
+        }
+        return json.dumps(summary, indent=2)
 
-    for memory in summarized_memories:
-        print(json.dumps(memory, indent=2))
+memories = [
+    "I went to the store today and bought some groceries.",
+    "The weather has been quite pleasant lately.",
+    "My friend invited me to a party this weekend."
+]
 
-if __name__ == '__main__':
-    main()
+memories_path = Path("memories.txt")
+memories_path.write_text("\n".join(memories))
+
+with open("memories.txt", "r") as f:
+    memories = f.read().splitlines()
+
+summarizer = MemorySummarizer(memories)
+patterns, insights = summarizer.analyze_memories()
+summary = summarizer.generate_summary(patterns, insights)
+
+print(summary)

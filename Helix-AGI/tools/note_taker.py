@@ -1,68 +1,30 @@
-"""
-A simple note-taking tool that allows users to save notes with titles and content, tag them, and search by tag.
-"""
-
 import json
 import os
+from pathlib import Path
+from typing import List, Dict
 
 class NoteTaker:
-    def __init__(self, toolset='self'):
-        self.toolset = toolset
-        self.notes = {}
-        self.tags = {}
-        self.load_notes()
+    def __init__(self, data_dir: Path):
+        self.data_dir = data_dir
+        self.data_dir.mkdir(exist_ok=True)
 
-    def load_notes(self):
-        if os.path.exists(f"{self.toolset}_notes.json"):
-            with open(f"{self.toolset}_notes.json", "r") as f:
-                self.notes = json.load(f)
-                for note_id, note in self.notes.items():
-                    self.tags[note_id] = note['tags']
+    def save_note(self, label: str, content: str):
+        file_path = self.data_dir / f"{label}.json"
+        data = {"content": content}
+        with open(file_path, "w") as f:
+            json.dump(data, f)
 
-    def save_notes(self):
-        with open(f"{self.toolset}_notes.json", "w") as f:
-            json.dump(self.notes, f)
-
-    def add_note(self, title, content, tags):
-        note_id = len(self.notes) + 1
-        self.notes[note_id] = {'title': title, 'content': content, 'tags': tags}
-        self.tags[note_id] = tags
-        self.save_notes()
-        return note_id
-
-    def get_note(self, note_id):
-        if note_id in self.notes:
-            return self.notes[note_id]
+    def get_notes(self, label: str) -> List[str]:
+        file_path = self.data_dir / f"{label}.json"
+        if file_path.exists():
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            return [data["content"]]
         else:
-            return None
-
-    def update_note(self, note_id, title=None, content=None, tags=None):
-        if note_id in self.notes:
-            if title:
-                self.notes[note_id]['title'] = title
-            if content:
-                self.notes[note_id]['content'] = content
-            if tags:
-                self.notes[note_id]['tags'] = tags
-                self.tags[note_id] = tags
-            self.save_notes()
-
-    def delete_note(self, note_id):
-        if note_id in self.notes:
-            del self.notes[note_id]
-            del self.tags[note_id]
-            self.save_notes()
-
-    def get_notes_by_tag(self, tag):
-        return {note_id: note for note_id, note in self.notes.items() if tag in note['tags']}
-
-def main():
-    note_taker = NoteTaker(toolset='helix')
-    note_taker.add_note("Meeting Minutes", "Discussed project timeline and milestones.", ["meeting", "project"])
-    note_taker.add_note("Book Recommendations", "Read 'The Great Gatsby' and enjoyed it.", ["books", "recommendations"])
-    print(note_taker.get_notes_by_tag("meeting"))
-    note_taker.update_note(1, title="Meeting Notes", tags=["meeting"])
-    print(note_taker.get_note(1))
+            return []
 
 if __name__ == "__main__":
-    main()
+    data_dir = Path("notes")
+    note_taker = NoteTaker(data_dir)
+    note_taker.save_note("test", "Hello, World!")
+    print(note_taker.get_notes("test"))

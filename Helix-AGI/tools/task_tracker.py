@@ -1,64 +1,44 @@
-"""
-A simple task tracker that allows you to manage tasks with descriptions, due dates, and progress markers.
-"""
-
 import json
-import datetime
-from collections import defaultdict
+import re
+import pathlib
+import requests
+from bs4 import BeautifulSoup
+import psutil
+from typing import List, Dict
 
-class TaskTracker:
-    def __init__(self):
-        self.tasks = []
+def validate_task(task: Dict) -> None:
+    required_fields = ['name', 'description', 'due_date']
+    for field in required_fields:
+        if field not in task:
+            raise ValueError(f"Missing required field '{field}' in task")
 
-    def add_task(self, description, due_date=None):
-        task = {
-            "id": len(self.tasks),
-            "description": description,
-            "due_date": due_date,
-            "completed": False
-        }
-        self.tasks.append(task)
-        return task
+def save_task(task: Dict, tasks_file: pathlib.Path) -> None:
+    with open(tasks_file, 'r+') as f:
+        tasks = json.load(f)
+        tasks.append(task)
+        f.seek(0)
+        json.dump(tasks, f, indent=2)
 
-    def update_task(self, task_id, description=None, due_date=None, completed=None):
-        task = next((t for t in self.tasks if t["id"] == task_id), None)
-        if task:
-            if description:
-                task["description"] = description
-            if due_date:
-                task["due_date"] = due_date
-            if completed is not None:
-                task["completed"] = completed
+def load_tasks(tasks_file: pathlib.Path) -> List[Dict]:
+    if not tasks_file.exists():
+        tasks_file.write_text('[]')
+    with open(tasks_file, 'r') as f:
+        return json.load(f)
+
+def get_task_by_name(name: str, tasks: List[Dict]) -> Dict:
+    for task in tasks:
+        if task['name'] == name:
             return task
-        return None
+    return None
 
-    def complete_task(self, task_id):
-        task = next((t for t in self.tasks if t["id"] == task_id), None)
-        if task:
-            task["completed"] = True
-            return task
-        return None
+def update_task(task: Dict, tasks_file: pathlib.Path) -> None:
+    tasks = load_tasks(tasks_file)
+    task_index = next((i for i, t in enumerate(tasks) if t['name'] == task['name']), None)
+    if task_index is None:
+        raise ValueError(f"Task '{task['name']}' not found")
+    tasks[task_index] = task
+    save_task(tasks[task_index], tasks_file)
 
-    def delete_task(self, task_id):
-        self.tasks = [t for t in self.tasks if t["id"] != task_id]
-
-    def save(self, filename):
-        with open(filename, "w") as f:
-            json.dump(self.tasks, f)
-
-    def load(self, filename):
-        with open(filename, "r") as f:
-            self.tasks = json.load(f)
-
-def main():
-    tracker = TaskTracker()
-    tracker.add_task("Buy groceries", due_date="2023-04-01")
-    tracker.add_task("Finish project report", due_date="2023-04-15")
-    tracker.update_task(0, description="Buy milk, eggs, bread")
-    tracker.complete_task(0)
-    tracker.save("tasks.json")
-    tracker.load("tasks.json")
-    print(tracker.tasks)
-
-if __name__ == "__main__":
-    main()
+def delete_task(name: str, tasks_file: pathlib.Path) -> None:
+    tasks = load_tasks(tasks_file)
+    task = get_task

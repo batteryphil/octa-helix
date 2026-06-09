@@ -1,46 +1,37 @@
-"""
-Fetches and parses the content of a web page from a given URL.
-
-Usage:
-from url_reader import URLReader
-
-url = "https://example.com"
-reader = URLReader(url)
-content = reader.get_content()
-text = reader.get_text()
-tables = reader.get_tables()
-links = reader.get_links()
-"""
-
 import requests
+import json
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+import re
+import pathlib
+from pathlib import Path
+import psutil
 
 class URLReader:
     def __init__(self, url):
         self.url = url
-        self.response = requests.get(url)
-        self.soup = BeautifulSoup(self.response.text, 'html.parser')
+        self.content = None
+        self.soup = None
+        self.title = None
+        self.text = None
 
-    def get_content(self):
-        """Returns the raw HTML content of the web page."""
-        return self.response.text
+    def fetch_content(self):
+        try:
+            response = requests.get(self.url)
+            response.raise_for_status()
+            self.content = response.text
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching URL {self.url}: {e}")
 
-    def get_text(self):
-        """Returns the text content extracted from the HTML."""
-        return self.soup.get_text()
+    def parse_html(self):
+        self.soup = BeautifulSoup(self.content, 'html.parser')
+        self.title = self.soup.title.string
+        self.text = self.soup.get_text()
 
-    def get_tables(self):
-        """Returns a list of tables found on the page."""
-        return self.soup.find_all('table')
-
-    def get_links(self):
-        """Returns a list of links found on the page."""
-        return [urljoin(self.url, link['href']) for link in self.soup.find_all('a', href=True)]
-
-    def get_elements(self, tag, attributes=None):
-        """Returns a list of elements with the specified tag and attributes."""
-        if attributes:
-            return [elem for elem in self.soup.find_all(tag, **attributes)]
-        else:
-            return self.soup.find_all(tag)
+    def save_data(self, output_file):
+        data = {
+            "url": self.url,
+            "title": self.title,
+            "text": self.text
+        }
+        with open(output_file, "w") as f:
+            json.dump(data, f, indent=4)

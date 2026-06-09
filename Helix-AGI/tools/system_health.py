@@ -1,56 +1,40 @@
-"""
-Monitor system health metrics such as CPU, RAM, disk, and GPU usage and store them for analysis.
-"""
-
-import psutil
-import time
 import json
+import psutil
 import os
-from helix.registry import ToolRegistry
+import time
+import re
+import pathlib
+from pathlib import Path
+import requests
+from bs4 import BeautifulSoup
 
-class SystemHealthMonitor:
-    def __init__(self, interval=60):
-        self.interval = interval
-        self.data = {
-            'cpu': [],
-            'memory': [],
-            'disk': [],
-            'gpu': []
-        }
-        ToolRegistry.register_tool(self, toolset='self')
+class SystemHealth:
+    def __init__(self, cpu_threshold, ram_threshold, disk_threshold):
+        self.cpu_threshold = cpu_threshold
+        self.ram_threshold = ram_threshold
+        self.disk_threshold = disk_threshold
+        self.last_cpu_usage = None
+        self.last_ram_usage = None
+        self.last_disk_usage = None
 
-    def collect_metrics(self):
+    def check_cpu_usage(self):
         cpu_usage = psutil.cpu_percent()
-        memory_usage = psutil.virtual_memory()
+        if self.last_cpu_usage is not None and cpu_usage > self.cpu_threshold:
+            print(f"High CPU usage detected: {cpu_usage}%")
+        self.last_cpu_usage = cpu_usage
+
+    def check_ram_usage(self):
+        ram_usage = psutil.virtual_memory()
+        self.last_ram_usage = ram_usage.percent
+
+    def check_disk_usage(self):
         disk_usage = psutil.disk_usage('/')
-        gpu_usage = psutil.gpu_percent()
+        self.last_disk_usage = disk_usage.percent
 
-        self.data['cpu'].append(cpu_usage)
-        self.data['memory'].append({
-            'total': memory_usage.total,
-            'available': memory_usage.available,
-            'percent': memory_usage.percent
-        })
-        self.data['disk'].append({
-            'total': disk_usage.total,
-            'used': disk_usage.used,
-            'free': disk_usage.free,
-            'percent': disk_usage.percent
-        })
-        self.data['gpu'].append(gpu_usage)
-
-    def save_data(self):
-        timestamp = int(time.time())
-        filename = f'system_health_{timestamp}.json'
-        with open(filename, 'w') as f:
-            json.dump(self.data, f, indent=2)
-
-    def run(self):
-        while True:
-            self.collect_metrics()
-            self.save_data()
-            time.sleep(self.interval)
-
-if __name__ == '__main__':
-    monitor = SystemHealthMonitor()
-    monitor.run()
+    def get_system_health(self):
+        system_health = {
+            'cpu_usage': self.last_cpu_usage,
+            'ram_usage': self.last_ram_usage,
+            'disk_usage': self.last_disk_usage
+        }
+        return json.dumps(system_health)
