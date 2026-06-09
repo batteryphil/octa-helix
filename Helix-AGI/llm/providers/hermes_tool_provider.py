@@ -94,6 +94,14 @@ def _load_engine():
     _device = next(_model.parameters()).device
     logger.info(f"Hermes-3 ready ✅ on {_device} ({time.time()-t0:.1f}s)")
 
+    # ── Neural Probe: attach layer activation hooks ───────────────────────
+    try:
+        from core.neural_probe import attach_hooks as _attach_hooks
+        n_hooked = _attach_hooks(_model)
+        logger.info(f"[neural_probe] {n_hooked} layers hooked for brain visualization")
+    except Exception as _probe_err:
+        logger.warning(f"[neural_probe] hook failed (non-fatal): {_probe_err}")
+
 
 def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
     """Parse Hermes-3 tool calls — two formats supported:
@@ -354,6 +362,15 @@ class HermesToolSession:
                         temperature=self.temperature,
                         pad_token_id=self._tokenizer.eos_token_id,
                     )
+                # ── Flush neural probe snapshot after generate ─────────────
+                try:
+                    from core.neural_probe import flush as _probe_flush
+                    _probe_flush(
+                        pulse=getattr(self, '_last_pulse', 0),
+                        token_count=int(out.shape[1] - input_ids.shape[1]),
+                    )
+                except Exception:
+                    pass
                 raw = self._tokenizer.decode(
                     out[0][input_ids.shape[1]:], skip_special_tokens=False
                 ).strip()

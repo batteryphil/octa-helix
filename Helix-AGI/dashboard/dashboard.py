@@ -446,6 +446,26 @@ def create_app():
         }
         return jsonify(data)
 
+    @app.route("/api/neural")
+    def api_neural():
+        """Per-layer activation snapshot for the 3D brain visualization."""
+        try:
+            snap_path = BASE_DIR / "data" / "neural_activations.json"
+            if snap_path.exists():
+                data = json.loads(snap_path.read_text())
+                return jsonify(data)
+        except Exception:
+            pass
+        # Return flat defaults (32 layers, all quiet) if not yet available
+        return jsonify({
+            "layers": [0.0] * 32,
+            "attn_heads": [0.0] * 32,
+            "ts": 0,
+            "pulse": 0,
+            "token_count": 0,
+            "n_layers": 32,
+        })
+
     return app
 
 
