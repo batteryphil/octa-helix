@@ -1,27 +1,24 @@
 import json
-import requests
-from bs4 import BeautifulSoup
+import jsonlines
 import re
+from pathlib import Path
 
-class KnowledgeBaseSearch:
-    def __init__(self, url):
-        self.url = url
-        self.page = requests.get(url)
-        self.soup = BeautifulSoup(self.page.content, 'html.parser')
-
-    def search(self, query):
-        query = query.lower()
-        search_results = []
-        for match in self.soup.find_all(string=lambda text: query in text.lower()):
-            search_results.append(str(match))
-        return search_results
+def search_knowledge(query):
+    with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
+        results = []
+        for line in f:
+            entry = json.loads(line)
+            if query.lower() in entry['text'].lower():
+                results.append(entry)
+        results = sorted(results, key=lambda x: re.search(query, x['text'], re.IGNORECASE), reverse=True)
+        return results[:3]
 
 def main():
-    url = 'https://example.com/knowledge-base'
-    query = 'example query'
-    search = KnowledgeBaseSearch(url)
-    results = search.search(query)
-    print(json.dumps({'query': query, 'results': results}))
+    query = input("Enter a search query: ")
+    results = search_knowledge(query)
+    print(f"Top 3 relevant results for '{query}':")
+    for i, result in enumerate(results, 1):
+        print(f"{i}. {result['text']}")
 
 if __name__ == '__main__':
     main()
