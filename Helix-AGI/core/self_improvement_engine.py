@@ -110,8 +110,6 @@ class SelfImprovementEngine:
             return ""
         try:
             import torch
-            from llm.providers.hermes_tool_provider import _generation_lock
-
             torch.cuda.empty_cache()  # free fragmented VRAM before generation
             tokenizer = session._tokenizer
             model = session._model
@@ -128,25 +126,16 @@ class SelfImprovementEngine:
                 messages, tokenize=False, add_generation_prompt=True
             )
             ids = tokenizer(prompt_text, return_tensors="pt").input_ids.to(device)
-
-            # Acquire shared lock — prevents concurrent generate() with main loop
-            if not _generation_lock.acquire(timeout=60):
-                logger.warning("[SIE] Generation lock timeout — skipping this call")
-                return ""
-            try:
-                with torch.no_grad():
-                    out = model.generate(
-                        ids, max_new_tokens=max_tokens,
-                        do_sample=False,
-                        pad_token_id=tokenizer.eos_token_id,
-                        num_return_sequences=1,
-                        output_attentions=False,
-                        output_scores=False,
-                        return_dict_in_generate=False
-                    )
-            finally:
-                _generation_lock.release()
-
+            with torch.no_grad():
+                out = model.generate(
+                    ids, max_new_tokens=max_tokens,
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                    num_return_sequences=1,
+                    output_attentions=False,
+                    output_scores=False,
+                    return_dict_in_generate=False
+                )
             raw = tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True).strip()
             return raw
         except torch.cuda.OutOfMemoryError as e:

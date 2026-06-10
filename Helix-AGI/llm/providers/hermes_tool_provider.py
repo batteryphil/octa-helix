@@ -14,7 +14,6 @@ Context window: 8192 tokens (vs Mistral's 4096)
 import json
 import logging
 import re
-import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,11 +22,6 @@ import torch
 
 logger = logging.getLogger("helix.llm.hermes")
 
-# ── Shared generation lock ─────────────────────────────────────────────────────
-# Prevents concurrent model.generate() calls from the main pulse loop AND the
-# self-improvement engine (which runs in async hook threads). Two simultaneous
-# generate() calls double activation memory and cause OOM on 11.6GB VRAM.
-_generation_lock = threading.Lock()
 
 # ── Model config ──────────────────────────────────────────────────────────────
 MODEL_ID  = "NousResearch/Hermes-3-Llama-3.1-8B"
@@ -361,22 +355,14 @@ class HermesToolSession:
                     prompt, return_tensors="pt"
                 ).input_ids.to(self._device)
 
-                if not _generation_lock.acquire(timeout=5):
-                    # SIE is generating — skip this attempt, retry next pulse
-                    logger.debug("Generation lock busy (SIE running) — skipping this inference")
-                    final_response = "(skipped — SIE generating)"
-                    break
-                try:
-                    with torch.no_grad():
-                        out = self._model.generate(
-                            input_ids,
-                            max_new_tokens=token_budget,
-                            do_sample=(not is_autonomous_pulse),
-                            temperature=self.temperature,
-                            pad_token_id=self._tokenizer.eos_token_id,
-                        )
-                finally:
-                    _generation_lock.release()
+                with torch.no_grad():
+                    out = self._model.generate(
+                        input_ids,
+                        max_new_tokens=token_budget,
+                        do_sample=(not is_autonomous_pulse),
+                        temperature=self.temperature,
+                        pad_token_id=self._tokenizer.eos_token_id,
+                    )
                 # ── Flush neural probe snapshot after generate ─────────────
                 try:
                     from core.neural_probe import flush as _probe_flush
