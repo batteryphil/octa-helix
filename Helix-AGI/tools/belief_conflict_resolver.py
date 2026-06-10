@@ -1,28 +1,38 @@
 import json
-import os
-from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Dict
 
-def load_beliefs(file_path: Path) -> List[Dict]:
-    with open(file_path, 'r') as f:
-        return json.load(f)
+class BeliefConflictResolver:
+    def __init__(self, resolution_strategy: str):
+        self.resolution_strategy = resolution_strategy
+        self.conflicts = []
 
-def resolve_conflict(belief1: Dict, belief2: Dict) -> Dict:
-    merged = {**belief1, **belief2}
-    merged['confidence'] = (belief1['confidence'] + belief2['confidence']) / 2
-    return merged
+    def add_conflict(self, belief1: Dict, belief2: Dict):
+        self.conflicts.append((belief1, belief2))
 
-def find_conflicting_pairs(beliefs: List[Dict]) -> List[Tuple[Dict, Dict]]:
-    pairs = []
-    for i, belief1 in enumerate(beliefs):
-        for belief2 in beliefs[i+1:]:
-            if belief1['name'] == belief2['name'] and belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7:
-                pairs.append((belief1, belief2))
-    return pairs
+    def resolve_conflicts(self) -> List[Dict]:
+        resolved_beliefs = []
+        for belief1, belief2 in self.conflicts:
+            if self.resolution_strategy == 'favor_higher_confidence':
+                if belief1['confidence'] > belief2['confidence']:
+                    resolved_beliefs.append(belief1)
+                else:
+                    resolved_beliefs.append(belief2)
+            else:
+                raise ValueError(f"Unknown resolution strategy: {self.resolution_strategy}")
+        return resolved_beliefs
 
-def resolve_belief_conflicts(beliefs: List[Dict]) -> List[Dict]:
-    conflicts = find_conflicting_pairs(beliefs)
-    resolved = []
-    for pair in conflicts:
-        resolved.append(resolve_conflict(pair[0], pair[1]))
-    return resolved
+    def log_resolved_beliefs(self, resolved_beliefs: List[Dict]):
+        with open('resolved_beliefs.json', 'w') as f:
+            json.dump(resolved_beliefs, f, indent=2)
+
+def main():
+    resolver = BeliefConflictResolver('favor_higher_confidence')
+    belief1 = {'name': 'belief1', 'confidence': 0.8}
+    belief2 = {'name': 'belief2', 'confidence': 0.6}
+    resolver.add_conflict(belief1, belief2)
+    resolved_beliefs = resolver.resolve_conflicts()
+    resolver.log_resolved_beliefs(resolved_beliefs)
+    print("Resolved beliefs logged successfully.")
+
+if __name__ == '__main__':
+    main()
