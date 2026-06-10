@@ -361,14 +361,22 @@ class HermesToolSession:
                     prompt, return_tensors="pt"
                 ).input_ids.to(self._device)
 
-                with _generation_lock, torch.no_grad():
-                    out = self._model.generate(
-                        input_ids,
-                        max_new_tokens=token_budget,
-                        do_sample=(not is_autonomous_pulse),
-                        temperature=self.temperature,
-                        pad_token_id=self._tokenizer.eos_token_id,
-                    )
+                if not _generation_lock.acquire(timeout=5):
+                    # SIE is generating — skip this attempt, retry next pulse
+                    logger.debug("Generation lock busy (SIE running) — skipping this inference")
+                    final_response = "(skipped — SIE generating)"
+                    break
+                try:
+                    with torch.no_grad():
+                        out = self._model.generate(
+                            input_ids,
+                            max_new_tokens=token_budget,
+                            do_sample=(not is_autonomous_pulse),
+                            temperature=self.temperature,
+                            pad_token_id=self._tokenizer.eos_token_id,
+                        )
+                finally:
+                    _generation_lock.release()
                 # ── Flush neural probe snapshot after generate ─────────────
                 try:
                     from core.neural_probe import flush as _probe_flush
