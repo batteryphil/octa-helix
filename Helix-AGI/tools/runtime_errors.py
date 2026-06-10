@@ -1,16 +1,41 @@
-import os
+import json
 import re
-from pathlib import Path
-from typing import List
+import pathlib
+from typing import List, Dict
 
-def get_last_20_error_lines(log_file: Path) -> List[str]:
-    with open(log_file, 'r') as file:
-        lines = file.readlines()
-    error_lines = [line.strip() for line in lines if 'ERROR' in line]
-    return error_lines[-20:] if len(error_lines) > 20 else error_lines
+import requests
+from bs4 import BeautifulSoup
+from pathlib import Path
+from json import JSONDecodeError
+
+def parse_log_file(log_file_path: str) -> List[Dict]:
+    with open(log_file_path, 'r') as f:
+        lines = f.readlines()
+    error_lines = []
+    for i in range(-1, -21, -1):
+        if 'ERROR' in lines[i]:
+            error_lines.append({'line': i, 'content': lines[i].strip()})
+    return error_lines
+
+def extract_error_details(url: str) -> Dict:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.find('title').text
+        memory_usage = psutil.Process().memory_info().rss / (1024 * 1024)
+        return {'title': title, 'memory_usage': memory_usage}
+    except requests.exceptions.RequestException as e:
+        return {'error': str(e)}
+    except JSONDecodeError:
+        return {'error': 'Invalid JSON'}
+
+def main():
+    log_file_path = 'path/to/helix/log/file.log'
+    error_lines = parse_log_file(log_file_path)
+    for error_line in error_lines:
+        error_details = extract_error_details(error_line['content'])
+        print(json.dumps({**error_line, **error_details}, indent=2))
 
 if __name__ == '__main__':
-    log_file = Path('/path/to/helix/log/file.log')
-    last_20_errors = get_last_20_error_lines(log_file)
-    for error in last_20_errors:
-        print(error)
+    main()
