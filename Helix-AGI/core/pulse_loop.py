@@ -956,10 +956,11 @@ class PulseLoop:
         if self._pulse_count % 3 == 0:
             try:
                 from tools.tool_registry import registry
-                # Correct method: get_tool_names(), not list_tools()
-                available = registry.get_tool_names()
+                import random
+                # Use get_declarations (same path as _ensure_session) then extract names
+                decls = registry.get_declarations(self._active_toolsets)
+                available = [d["name"] for d in decls if "name" in d]
                 if available:
-                    import random
 
                     # Every 15th pulse: introspection mandate (Q15 peer review)
                     if self._pulse_count % 15 == 0:
