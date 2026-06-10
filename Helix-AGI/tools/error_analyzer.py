@@ -1,56 +1,91 @@
 """
-A tool to analyze error-containing responses, extract key details, and identify common error types and contexts.
+error_analyzer.py — Agent-written tool (restored from gutted version)
 
-Usage:
-1. Run the script with a list of error-containing responses as input.
-2. The tool will parse the responses, extract key details, and generate a report.
-3. Review the generated report to identify patterns and common error types.
+Reads helix.log, extracts ERROR lines, groups them by type,
+and returns a structured summary so Helix can see what's failing.
 """
 
 import re
-import sys
+import logging
+from pathlib import Path
 from collections import defaultdict
+from typing import Dict, List
 
-class ErrorAnalyzer:
-    def __init__(self, responses):
-        self.responses = responses
-        self.error_types = defaultdict(int)
-        self.contexts = defaultdict(int)
+logger = logging.getLogger("helix.tools.error_analyzer")
 
-    def analyze(self):
-        for response in self.responses:
-            # Extract error type and context
-            error_type_match = re.search(r"Error: (\w+)", response)
-            context_match = re.search(r"Context: (.+?)\n", response)
-            
-            if error_type_match:
-                error_type = error_type_match.group(1)
-                self.error_types[error_type] += 1
-            if context_match:
-                context = context_match.group(1)
-                self.contexts[context] += 1
+LOG_PATH = Path(__file__).parent.parent / "logs" / "helix.log"
 
-            # Print progress
-            print(f"Analyzing response: {len(self.responses) - self.responses.index(response)}")
 
-        # Generate and print report
-        print("\nError Types:")
-        for error_type, count in self.error_types.items():
-            print(f"{error_type}: {count}")
+def analyze_errors(n: int = 20, log_path: str = None) -> Dict:
+    """Extract and categorize the last N ERROR lines from helix.log.
 
-        print("\nContexts:")
-        for context, count in self.contexts.items():
-            print(f"{context}: {count}")
+    Returns a dict with:
+      - total: int — total errors found in window
+      - by_type: dict — error category → count
+      - recent: list — last N raw error lines
+      - top_pattern: str — most common error pattern
+    """
+    path = Path(log_path) if log_path else LOG_PATH
+    if not path.exists():
+        return {"error": f"Log file not found: {path}", "total": 0}
 
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python error_analyzer.py <response_file>")
-        exit(1)
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception as e:
+        return {"error": str(e), "total": 0}
 
-    with open(sys.argv[1], "r") as file:
-        responses = [line.strip() for line in file.readlines()]
-        analyzer = ErrorAnalyzer(responses)
-        analyzer.analyze()
+    error_lines = [l for l in lines if " ERROR:" in l or "Traceback" in l]
+    recent = error_lines[-n:]
 
-if __name__ == "__main__":
-    main()
+    # Categorize by pattern
+    by_type: Dict[str, int] = defaultdict(int)
+    for line in error_lines:
+        if "403" in line or "URL read failed" in line:
+            by_type["web_403_blocked"] += 1
+        elif "Traceback" in line:
+            by_type["traceback"] += 1
+        elif "hook" in line.lower() and "failed" in line.lower():
+            by_type["hook_failure"] += 1
+        elif "crashed" in line.lower():
+            by_type["pulse_crash"] += 1
+        elif "import" in line.lower():
+            by_type["import_error"] += 1
+        elif "timeout" in line.lower():
+            by_type["timeout"] += 1
+        else:
+            by_type["other"] += 1
+
+    top_pattern = max(by_type, key=by_type.get) if by_type else "none"
+
+    return {
+        "total": len(error_lines),
+        "window": n,
+        "by_type": dict(by_type),
+        "top_pattern": top_pattern,
+        "recent": recent,
+    }
+
+
+def _register():
+    """Auto-register with Helix tool registry."""
+    try:
+        from tools.tool_registry import get_registry
+        registry = get_registry()
+        registry.register(
+            name="analyze_errors",
+            func=analyze_errors,
+            description="Analyze recent errors in helix.log. Returns counts by type and the last N error lines.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer", "description": "Number of recent error lines to return (default 20)"},
+                },
+                "required": [],
+            },
+            toolset="core",
+        )
+    except Exception:
+        pass
+
+
+_register()

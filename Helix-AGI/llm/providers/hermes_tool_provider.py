@@ -256,20 +256,45 @@ class HermesToolSession:
                 })
 
     def _sanitize(self, history: List[Dict]) -> List[Dict]:
-        """Enforce alternating user/assistant turns for Llama chat template."""
-        out = []
+        """Enforce alternating user/assistant turns for Llama chat template.
+
+        Hermes's Jinja template requires strict user/assistant/user/assistant
+        alternation. Tool responses ('tool' role) break this — collapse them
+        into the preceding assistant message so the template stays happy.
+        """
+        # Step 1: collapse 'tool' responses into the assistant turn above them
+        merged: List[Dict] = []
         for msg in history:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "tool":
+                if merged and merged[-1].get("role") == "assistant":
+                    # Append tool result to the assistant turn that called it
+                    merged[-1]["content"] += f"\n[Tool result: {content}]"
+                else:
+                    # Orphaned tool message — convert to assistant so it's not dropped
+                    merged.append({"role": "assistant", "content": f"[Tool result: {content}]"})
+                continue
+            merged.append(dict(msg))
+
+        # Step 2: merge consecutive same-role messages
+        out: List[Dict] = []
+        for msg in merged:
             role = msg.get("role", "")
             if out and out[-1].get("role") == role and role in ("user", "assistant"):
                 if role == "user":
                     out[-1]["content"] += "\n" + msg.get("content", "")
                 else:
-                    out[-1] = msg
+                    out[-1]["content"] += "\n" + msg.get("content", "")
                 continue
             out.append(dict(msg))
+
+        # Step 3: must start with user message
         while out and out[0].get("role") != "user":
             out.pop(0)
+
         return out
+
 
     def get_history_size(self) -> int:
         return sum(len(str(m.get("content", ""))) for m in self._history)
