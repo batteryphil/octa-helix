@@ -14,6 +14,7 @@ Context window: 8192 tokens (vs Mistral's 4096)
 import json
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,12 @@ from typing import Any, Dict, List, Optional
 import torch
 
 logger = logging.getLogger("helix.llm.hermes")
+
+# ── Shared generation lock ─────────────────────────────────────────────────────
+# Prevents concurrent model.generate() calls from the main pulse loop AND the
+# self-improvement engine (which runs in async hook threads). Two simultaneous
+# generate() calls double activation memory and cause OOM on 11.6GB VRAM.
+_generation_lock = threading.Lock()
 
 # ── Model config ──────────────────────────────────────────────────────────────
 MODEL_ID  = "NousResearch/Hermes-3-Llama-3.1-8B"
@@ -354,7 +361,7 @@ class HermesToolSession:
                     prompt, return_tensors="pt"
                 ).input_ids.to(self._device)
 
-                with torch.no_grad():
+                with _generation_lock, torch.no_grad():
                     out = self._model.generate(
                         input_ids,
                         max_new_tokens=token_budget,
