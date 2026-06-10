@@ -217,7 +217,10 @@ class CAAIGovernor:
 
         # Check for temperature TTL restore
         if self._provider and hasattr(self._provider, "_governor_temp_ttl"):
-            ttl = self._provider._governor_temp_ttl - 1
+            try:
+                ttl = int(self._provider._governor_temp_ttl) - 1
+            except (TypeError, ValueError):
+                ttl = 0  # corrupt TTL — just restore temperature
             if ttl <= 0:
                 self._provider.temperature = 0.7  # restore default
                 del self._provider._governor_temp_ttl
