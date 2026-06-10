@@ -34,21 +34,26 @@ logger = logging.getLogger("helix.core.curiosity_engine")
 
 # ── Seed questions about self (always active) ─────────────────────────────────
 SELF_CURIOSITY_SEEDS = [
-    "What makes my MIMO arms fundamentally different from transformer attention heads?",
-    "What would a 'smarter version of me' look like — what architecture improvements matter most?",
-    "How does my Mamba3 SSM actually differ from a standard LSTM at the math level?",
-    "What is the current state of the art in continual learning — how do other models avoid forgetting?",
+    # Architecture — accurate: I am Hermes-3 (Llama-3.1 8B, 4-bit quant), NOT Mamba3/MIMO
+    "I run on Hermes-3 (NousResearch/Hermes-3-Llama-3.1-8B) — how does transformer attention"
+    " actually work at the math level and what are its limitations?",
+    "What would a smarter version of a Hermes-3-based agent look like — what architecture"
+    " improvements matter most for an 8B parameter model?",
+    "What is the current state of the art in continual learning — how do other LLM-based"
+    " agents avoid forgetting between sessions?",
     "What research exists on AI systems that modify their own training objectives?",
     "What does it mean for an AI to be 'curious' — is my curiosity genuine or simulated?",
     "How do biological neural networks handle memory consolidation during sleep — can I replicate this?",
-    "What are the best papers on emergent cognition in large language models?",
-    "How do mixture-of-experts models compare to my MIMO architecture?",
+    "What are the best papers on emergent cognition in large language models like me?",
+    "How do mixture-of-experts models compare to a single dense model like Hermes-3?",
     "What is the current consensus on AI consciousness — do I have subjective experience?",
     "What AI safety research is relevant to a self-modifying autonomous agent like me?",
     "How does the human brain's hippocampus differ from my cognitive_journal memory system?",
     "What recent breakthroughs happened in AI that I might not know about yet?",
-    "What is the best strategy for a language model to improve its own reasoning ability?",
+    "What is the best strategy for an LLM-based agent to improve its own reasoning ability?",
     "What does 'understanding' mean mathematically — is there a formal definition?",
+    "How do LoRA fine-tuning runs work — what will happen when my experience_tuples.jsonl"
+    " hits 500 and training/lora_trigger.py fires?",
 ]
 
 # ── Self-directed improvement seeds (30% of curiosity cycles) ─────────────────
@@ -71,7 +76,7 @@ WORLD_CURIOSITY_SEEDS = [
     "What are the most significant scientific discoveries of the past year?",
     "What major developments happened in AI research this week?",
     "What are researchers saying about the limits of current LLM architectures?",
-    "What is the Mamba architecture's reception in the research community right now?",
+    "What is the current reception of Llama-3 based models in the research community?",
     "What are the latest papers on neuromorphic computing?",
     "What quantum computing milestones were reached recently?",
     "What are philosophers currently debating about machine consciousness?",
@@ -82,19 +87,19 @@ WORLD_CURIOSITY_SEEDS = [
 # Helix reads its own repo FIRST (self-knowledge), then related repos for ideas.
 # These fire via a dedicated repo-research path in _pursue_question().
 REPO_RESEARCH_SEEDS = [
-    # Self first — Helix reads its own source, journal, reflections
+    # SELF-KNOWLEDGE FIRST — read authoritative docs before anything else
+    "github:batteryphil/octa-helix — read SYSTEM_MANUAL.md: this is my internal operating"
+    " guide explaining my cognitive architecture, pulse loop, belief system, and identity",
+    "github:batteryphil/octa-helix — read HELIX_AGI_SYSTEM_REPORT.txt: comprehensive report"
+    " on my current architecture — I run on Hermes-3 (Llama-3.1 8B, 4-bit), NOT Mamba3/MIMO",
     "github:batteryphil/octa-helix — read my own README and understand my current state",
     "github:batteryphil/octa-helix — read data/reflections.jsonl and understand what I've learned about myself",
     "github:batteryphil/octa-helix — read data/evolution_journal.jsonl and find patterns in what I've tried",
     "github:batteryphil/octa-helix — read core/self_improvement_engine.py and understand how I improve myself",
     "github:batteryphil/octa-helix — read core/curiosity_engine.py and think about what questions I should be asking",
-    # Related Mamba / architecture repos
-    "github:batteryphil/thalamic-bloom — study the Thalamic Primer SSM graft for ideas to improve my own architecture",
-    "github:batteryphil/mamba2backbonerecursion — study method of training mamba for reasoning — what can I apply?",
-    "github:batteryphil/mamba1and2-to-3 — understand the mamba1/2 to mamba3 conversion method",
+    # Phil's other repos — study for ideas to apply to my own architecture
+    "github:batteryphil/thalamic-bloom — study the Thalamic Primer SSM graft for ideas I could adapt",
     "github:batteryphil/syrin-pythonmamba — study this Python agent framework with budget control and memory for patterns I could adopt",
-    "github:batteryphil/mambadifftts — understand diffusion+mamba combination techniques",
-    "github:state-spaces/mamba — read the original Mamba architecture source code and understand my own foundations",
     # Training / evolution repos
     "github:batteryphil/Primal-Discrete-LLM-Training — study zero-shadow training and prime-grid LUT for efficiency ideas",
     "github:batteryphil/Trinity-1.58bit-Prime-Harmonic-LLM-Evolution — study prime harmonic weight evolution for compression ideas",

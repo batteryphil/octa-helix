@@ -318,10 +318,11 @@ def fc_reload_tool(module_path: str) -> str:
             spec.loader.exec_module(mod)
             action = "loaded"
 
-        # Rebuild tool registry
-        from tools.tool_registry import registry
+        # Rebuild tool registry — invalidate declaration cache so new tools surface
+        from tools.tool_registry import registry, invalidate_check_cache
         before = set(registry._tools.keys())
-        registry._invalidate_cache()
+        invalidate_check_cache()          # clears the @lru_cache on tool checks
+        registry._generation += 1        # bump generation so callers know registry changed
         after = set(registry._tools.keys())
         new_tools = after - before
 
