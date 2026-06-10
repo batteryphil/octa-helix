@@ -346,13 +346,23 @@ class HermesToolSession:
 
 
         # Determine token budget:
-        # autonomous pulses get 80 tokens (no need for deep tool chains)
+        # autonomous pulses get 200 tokens (background thinking, no deep tool chains)
+        # mandate pulses get 400 tokens (must leave room for tool_call XML block)
         # user tasks get the full MAX_NEW_TOKENS budget
         is_autonomous_pulse = not bool(
             re.search(r'They said:|User message:|User:', message, re.IGNORECASE)
             or re.search(r'["\u201c].{10,}["\u201d]', message)
         )
-        token_budget = 200 if is_autonomous_pulse else 512   # 200: full thoughts; 512: user responses
+        # Detect if this is a mandated tool-use pulse (added by pulse_loop.py)
+        is_mandate_pulse = bool(
+            re.search(r'\[ACTIVE PULSE.*TOOL REQUIRED\]|\[INTROSPECTION PULSE', message)
+        )
+        if is_mandate_pulse:
+            token_budget = 400   # extra room for tool_call XML block
+        elif is_autonomous_pulse:
+            token_budget = 200   # background thinking
+        else:
+            token_budget = 512   # user responses
 
         logger.warning(f"HERMES send_message: is_autonomous={is_autonomous_pulse}, budget={token_budget}, user_text={user_text[:60]!r}")
 
@@ -362,8 +372,16 @@ class HermesToolSession:
         clean = self._sanitize(self._history)
         messages = [{"role": "system", "content": self._system}] + clean
 
-        # Convert tool declarations to OpenAI-compatible format for Hermes template
-        openai_tools = self._gemini_to_openai_tools() if not is_autonomous_pulse else None
+        # Convert tool declarations to OpenAI-compatible format for Hermes template.
+        # CRITICAL FIX: autonomous mandate pulses MUST receive tool schemas.
+        # Previously, all autonomous pulses got openai_tools=None, meaning the model
+        # could NEVER see tool definitions and therefore could never make tool calls,
+        # regardless of text instructions. Now: mandate pulses get tools, regular
+        # autonomous pulses stay lightweight (no tools = faster, less VRAM).
+        if not is_autonomous_pulse or is_mandate_pulse:
+            openai_tools = self._gemini_to_openai_tools()
+        else:
+            openai_tools = None  # Non-mandate autonomous: lightweight, no tool schema
 
         # Full tool-calling loop for real user tasks
         final_response = ""
