@@ -1,27 +1,17 @@
-import json
-import jsonlines
 import networkx as nx
-from pathlib import Path
 
-class JSONLToNetworkX:
-    def __init__(self, jsonl_file):
-        self.jsonl_file = jsonl_file
-        self.graph = nx.DiGraph()
-
-    def load_jsonl(self):
-        with jsonlines.open(self.jsonl_file) as f:
-            for line in f:
-                yield json.loads(line)
-
-    def add_edges(self):
-        for line in self.load_jsonl():
-            self.graph.add_edge(line['source'], line['target'])
-
-    def get_neighbors(self, node):
-        return list(self.graph.neighbors(node))
+def shortest_path(digraph, node1, node2):
+    return nx.shortest_path(digraph, source=node1, target=node2)
 
 if __name__ == '__main__':
-    jsonl_file = Path('example.jsonl')
-    converter = JSONLToNetworkX(jsonl_file)
-    converter.add_edges()
-    print(converter.get_neighbors('A'))
+    G = nx.DiGraph()
+    G.add_edge('A', 'B', weight=5)
+    G.add_edge('B', 'C', weight=4)
+    G.add_edge('A', 'D', weight=2)
+    G.add_edge('D', 'C', weight=1)
+    G.add_edge('D', 'E', weight=3)
+    G.add_edge('E', 'C', weight=6)
+
+    print(shortest_path(G, 'A', 'C'))  # ['A', 'D', 'C']
+    print(shortest_path(G, 'A', 'E'))  # ['A', 'D', 'E']
+    print(shortest_path(G, 'B', 'E'))  # []
