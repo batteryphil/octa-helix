@@ -113,34 +113,17 @@ class SpatialMind:
         self._load_attention()
 
     def _get_embedder(self):
-        """Lazy-load the SentenceTransformers embedder.
-
-        Uses the same all-MiniLM-L6-v2 model that ChromaDB's default
-        embedding function uses, so projected positions are consistent
-        across stored data and live thought embeddings.
-        """
-        if self._embedder is None:
-            try:
-                from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-                self._embedder = DefaultEmbeddingFunction()
-                logger.info("Embedder loaded (ChromaDB default — all-MiniLM-L6-v2)")
-            except Exception as e:
-                logger.warning(f"Embedder init failed: {e}")
-        return self._embedder
+        """Return the GPU embedder (lazy-loaded singleton)."""
+        return True  # gpu_embedder handles its own lazy loading
 
     def embed_text(self, text: str) -> np.ndarray:
-        """Embed text using the same model ChromaDB uses.
+        """Embed text using the GPU embedder (all-MiniLM-L6-v2 on CUDA).
 
         Returns a 384D embedding vector, or zeros on failure.
         """
-        embedder = self._get_embedder()
-        if embedder is None:
-            return np.zeros(self.embedding_dim, dtype=np.float32)
-
         try:
-            # ChromaDB's DefaultEmbeddingFunction expects a list
-            result = embedder([text])
-            return np.array(result[0], dtype=np.float32)
+            from core.gpu_embedder import embed as _gpu_embed
+            return _gpu_embed(text)
         except Exception as e:
             logger.debug(f"Embedding failed: {e}")
             return np.zeros(self.embedding_dim, dtype=np.float32)

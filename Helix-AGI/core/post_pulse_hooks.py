@@ -117,15 +117,39 @@ def register_hook(hook: PostPulseHook, name: str = ""):
 
 
 def run_hooks(context: PostPulseHookContext):
-    """Run all registered hooks. Exceptions are logged, never propagated.
+    """Run all registered hooks in a background thread (non-blocking).
 
-    Each hook failure is isolated — a crash in one hook does not prevent
-    subsequent hooks from running. This is critical for system stability:
-    the pulse loop must never crash due to a hook error.
+    Launches the hook chain in a daemon thread and returns immediately,
+    so the pulse loop proceeds to its sleep interval without waiting ~5s
+    for belief detector, co-occurrence, governor, etc. to complete.
+
+    Hooks from pulse N finish during pulse N's sleep window (10-30s),
+    well before pulse N+1 fires. Each hook failure is isolated.
     """
     with _lock:
         hooks = list(zip(_hooks, _hook_names))
 
+    def _run():
+        for hook, name in hooks:
+            try:
+                hook(context)
+            except Exception as e:
+                logger.warning(
+                    "Post-pulse hook '%s' failed: %s", name, e,
+                    exc_info=True,
+                )
+
+    threading.Thread(
+        target=_run, daemon=True, name=f"hooks-p{context.pulse_count}"
+    ).start()
+
+
+def run_hooks_sync(context: PostPulseHookContext):
+    """Synchronous fallback — blocks until all hooks complete.
+    Use only when the next action genuinely depends on hook output.
+    """
+    with _lock:
+        hooks = list(zip(_hooks, _hook_names))
     for hook, name in hooks:
         try:
             hook(context)

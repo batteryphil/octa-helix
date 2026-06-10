@@ -117,25 +117,11 @@ class PhysicsEngine:
 
     # ── Embedder ──────────────────────────────────────────────────────
 
-    def _get_embedder(self):
-        """Lazy-load ChromaDB's all-MiniLM-L6-v2 (CPU, no Ollama)."""
-        if self._embedder is None:
-            try:
-                from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-                self._embedder = DefaultEmbeddingFunction()
-                logger.info("Embedder loaded (all-MiniLM-L6-v2, CPU)")
-            except Exception as e:
-                logger.warning(f"Embedder init failed: {e}")
-        return self._embedder
-
     def embed_text(self, text: str) -> np.ndarray:
-        """Embed text → 384D vector. Returns zeros on failure."""
-        embedder = self._get_embedder()
-        if embedder is None:
-            return np.zeros(EMBEDDING_DIM, dtype=np.float32)
+        """Embed text → 384D vector using GPU embedder. Returns zeros on failure."""
         try:
-            result = embedder([text])
-            return np.array(result[0], dtype=np.float32)
+            from core.gpu_embedder import embed as _gpu_embed
+            return _gpu_embed(text)
         except Exception as e:
             logger.debug(f"Embedding failed: {e}")
             return np.zeros(EMBEDDING_DIM, dtype=np.float32)
