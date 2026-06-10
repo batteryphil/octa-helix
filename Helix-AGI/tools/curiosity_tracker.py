@@ -1,52 +1,33 @@
 import json
-import requests
-import time
 import os
-import re
-import json
-import psutil
+import datetime
+import random
+import matplotlib.pyplot as plt
 from pathlib import Path
+from collections import defaultdict
+from typing import List, Dict
+
+import requests
 from bs4 import BeautifulSoup
 
-def get_curiosity_metrics():
-    response = requests.get("http://localhost:8000/api/curiosity")
-    return json.loads(response.text)
+DATA_FILE = "curiosity_data.json"
+PLOT_FILE = "curiosity_plot.png"
 
-def save_metrics(metrics, filename):
-    with open(filename, "a") as f:
-        json.dump(metrics, f)
-        f.write("\n")
+def get_curiosity_score(url: str) -> float:
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    score_element = soup.find("div", class_="curiosity-score")
+    return float(score_element.text.strip())
 
-def load_metrics(filename):
-    if Path(filename).exists():
-        with open(filename, "r") as f:
-            return [json.loads(line) for line in f]
-    else:
-        return []
+def log_curiosity_event(date: datetime.date, score: float) -> None:
+    data = Path(DATA_FILE)
+    if not data.exists():
+        data.write_text("[]")  # Fixed the syntax error here
 
-def calculate_average_response_length(metrics):
-    return sum(len(m["response"]) for m in metrics) / len(metrics)
+    with open(DATA_FILE, "r") as file:
+        events = json.load(file)
 
-def calculate_tool_call_rate(metrics):
-    return len(metrics) / (time.time() - metrics[0]["timestamp"])
+    events.append({"date": str(date), "score": score})  # Fixed the syntax error here
 
-def main():
-    metrics_filename = "curiosity_metrics.jsonl"
-    metrics = load_metrics(metrics_filename)
-
-    while True:
-        new_metrics = get_curiosity_metrics()
-        metrics.append(new_metrics)
-        save_metrics(new_metrics, metrics_filename)
-
-        avg_response_length = calculate_average_response_length(metrics)
-        tool_call_rate = calculate_tool_call_rate(metrics)
-
-        print(f"Metrics: {new_metrics}")
-        print(f"Average response length: {avg_response_length}")
-        print(f"Tool call rate: {tool_call_rate} calls per second")
-
-        time.sleep(5)
-
-if __name__ == "__main__":
-    main()
+    with open(DATA_FILE, "w") as file:
+        json.dump(events, file)
