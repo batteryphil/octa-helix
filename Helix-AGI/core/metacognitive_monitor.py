@@ -145,6 +145,14 @@ class MetacognitiveMonitor:
                 if len(self._records) > 500:
                     self._records = self._records[-500:]
 
+            # Write fitness delta back to ctx for self_trainer quality gate
+            try:
+                snap = self.get_latest_snapshot()
+                if snap:
+                    ctx.last_fitness_delta = snap.composite_fitness - 0.5  # delta from neutral
+            except (AttributeError, TypeError):
+                pass  # ctx may not have slot yet on first pulse
+
             # Snapshot every N pulses
             if pulse_count > 0 and pulse_count % SNAPSHOT_INTERVAL == 0:
                 self._write_snapshot()
@@ -235,8 +243,10 @@ class MetacognitiveMonitor:
             with self._lock:
                 self._snapshots.append(snap)
 
+            snap_dict = asdict(snap)
+            snap_dict["fitness"] = snap_dict["composite_fitness"]  # alias for readers
             with self._snap_path.open("a") as f:
-                f.write(json.dumps(asdict(snap)) + "\n")
+                f.write(json.dumps(snap_dict) + "\n")
 
             logger.info(
                 f"[metacog] Snapshot: fitness={snap.composite_fitness:.3f} "

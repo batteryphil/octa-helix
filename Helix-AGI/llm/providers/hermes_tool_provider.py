@@ -223,6 +223,11 @@ class HermesToolSession:
 
         self._history: List[Dict] = []
 
+        # Track tool calls made during the current send_message() call.
+        # Cleared at the start of each send_message(), read by pulse_loop
+        # via get_last_tool_calls() to populate PostPulseHookContext.
+        self._last_tool_calls: List[Dict] = []
+
         # Governor TTL support (set by CAAIGovernor)
         self._governor_temp_ttl: Optional[int] = None
 
@@ -326,6 +331,9 @@ class HermesToolSession:
 
         logger.warning(f"HERMES send_message: is_autonomous={is_autonomous_pulse}, budget={token_budget}, user_text={user_text[:60]!r}")
 
+        # Clear tool call log for this pulse
+        self._last_tool_calls = []
+
         clean = self._sanitize(self._history)
         messages = [{"role": "system", "content": self._system}] + clean
 
@@ -395,6 +403,12 @@ class HermesToolSession:
                     except Exception as e:
                         result = f"Tool error: {e}"
                     logger.warning(f"HERMES TOOL EXEC: {name}({args}) → {str(result)[:120]}")
+                    # Record this tool call for post-pulse hook context
+                    self._last_tool_calls.append({
+                        "name": name,
+                        "arguments": args,
+                        "result": str(result),
+                    })
                     messages.append({
                         "role": "tool",
                         "content": str(result),
@@ -444,6 +458,14 @@ class HermesToolSession:
             final_response = "(max tool iterations reached)"
 
         self._history.append({"role": "assistant", "content": final_response})
-        logger.info(f"Hermes response ({len(final_response)} chars): {final_response[:80]}")
         return final_response
+
+    def get_last_tool_calls(self) -> List[Dict]:
+        """Return tool calls made during the last send_message() call.
+
+        Used by pulse_loop to populate PostPulseHookContext.tool_calls,
+        which feeds engagement_hook, metacog_monitor, and self_trainer.
+        Returns a copy to prevent mutation.
+        """
+        return list(self._last_tool_calls)
 

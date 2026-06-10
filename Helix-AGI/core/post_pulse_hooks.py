@@ -64,6 +64,9 @@ class PostPulseHookContext:
         "spatial_state", "active_toolsets",
         "memory_id", "lagrangian_before", "lagrangian_after",
         "injected_belief_ids",
+        # Writable by hooks — read by self_trainer quality gate
+        "novel_belief_added",   # True if belief_detector stored a new belief this pulse
+        "last_fitness_delta",   # float set by fitness_evaluator hook
     )
 
     def __init__(
@@ -89,6 +92,8 @@ class PostPulseHookContext:
         self.lagrangian_before = lagrangian_before or {}
         self.lagrangian_after = lagrangian_after or {}
         self.injected_belief_ids = injected_belief_ids or []
+        self.novel_belief_added = False    # set True by belief_detector_hook
+        self.last_fitness_delta = 0.0     # set by fitness_evaluator hook
 
 
 # Type alias for hook functions

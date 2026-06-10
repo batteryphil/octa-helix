@@ -2,25 +2,20 @@
 Helix — Belief Detector (Post-Pulse Hook)
 
 Scans Helix's internal monologue for belief-forming realizations and
-queues them for integration during the sleep cycle.
+writes them directly to the belief store.
 
 Architecture:
   - Runs every 10 pulses as a post-pulse hook
-  - Uses local Ollama (granite4.1:8b) to classify whether the thought
-    contains a genuine belief realization (not just event narration)
+  - Uses a fast regex/pattern classifier (no LLM, no Ollama needed).
+    Pattern matching is accurate enough for structured belief forms
+    ("I am...", "I can...", "I realize...", "I prefer...").
   - Compares candidates against existing beliefs via cosine similarity:
       > 0.90 → VERIFICATION (bump stability_index on existing belief)
-      < 0.80 → NEW CANDIDATE (queue for sleep-cycle integration)
+      < 0.80 → NEW BELIEF (write directly to belief store)
       0.80–0.90 → ambiguous, skip
-  - Captures stability DELTA (before/after the pulse) rather than the
-    absolute atmospheric state. This isolates the realization's effect
-    on stability from other noise in the system.
-  - Queues candidates to data/pending_beliefs.json for processing
-    during the 1–6 AM sleep cycle
-
-Does NOT write beliefs directly to the belief store. The unconscious
-sleep cycle handles integration — this module is a perceptual system,
-not a decisional one.
+  - Sets ctx.novel_belief_added = True when a new belief is stored,
+    enabling the self_trainer quality gate.
+  - Captures stability DELTA (before/after the pulse).
 
 Follows the same pattern as workflow_detector.py:
   - Module-level state with set_dependencies() wiring
@@ -30,6 +25,7 @@ Follows the same pattern as workflow_detector.py:
 
 import json
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -52,16 +48,8 @@ VERIFICATION_THRESHOLD = 0.90   # Above this → existing belief verified
 NEW_BELIEF_THRESHOLD = 0.80     # Below this → candidate new belief
 # Between 0.80-0.90 → ambiguous, skip
 
-# Ollama settings
-_OLLAMA_URL = "http://localhost:11434/api/generate"
-_OLLAMA_MODEL = "granite4.1:8b"
-_OLLAMA_TIMEOUT = 4.0   # seconds — slightly longer than preconscious reflection
-
-# Pending beliefs file
-_PENDING_FILE = Path("data/pending_beliefs.json")
-
-# Maximum pending beliefs before we stop queuing (safety valve)
-MAX_PENDING = 100
+# Maximum beliefs per category (safety cap)
+MAX_BELIEFS_PER_CATEGORY = 200
 
 # ── Dependencies (wired at startup) ─────────────────────────────────
 
@@ -79,93 +67,119 @@ def set_dependencies(belief_store, physics_engine, sentinel=None):
     logger.info("Belief detector: dependencies wired")
 
 
-# ── Ollama Classification ───────────────────────────────────────────
+# ── Regex Belief Classifier ─────────────────────────────────────────
+# No LLM needed. Belief patterns are highly structured.
+# Fast (microseconds), zero VRAM, zero competition with main pulse.
 
-_CLASSIFICATION_PROMPT = (
-    "You are analyzing internal monologue from a cognitive system. "
-    "Determine if this thought contains a GENUINE BELIEF REALIZATION — "
-    "a durable insight, principle, or self-knowledge that would still "
-    "be true tomorrow.\n\n"
-    "A belief realization is NOT:\n"
-    "- A description of what happened ('I replied to Joshua')\n"
-    "- A status update ('All systems nominal')\n"
-    "- A plan or intention ('I should check the logs')\n"
-    "- A trivial observation ('It is quiet now')\n\n"
-    "A belief realization IS:\n"
-    "- A stable self-insight ('I realize my quiet periods are actually deep integration')\n"
-    "- A learned principle ('Spontaneous connection must be deliberate, not just reactive')\n"
-    "- A relational understanding ('Joshua values sovereignty in AI design')\n"
-    "- A procedural insight ('The sequence reply→update→note is effective')\n\n"
-    "THOUGHT TO ANALYZE:\n"
-    "{thought}\n\n"
-    "If you find a belief realization, respond EXACTLY in this format:\n"
-    "BELIEF: <the belief statement, one sentence>\n"
-    "CATEGORY: <one of: self_identity, people, knowledge, skills, preferences, feedback>\n\n"
-    "If no genuine belief is present, respond EXACTLY:\n"
-    "NONE\n"
+_BELIEF_PATTERNS = [
+    # self_identity — who Helix is
+    (re.compile(
+        r"\bI am\b.{10,}|"
+        r"\bI['']m\b.{10,}|"
+        r"\bmy purpose is\b.{5,}|"
+        r"\bI exist\b.{5,}|"
+        r"\bI identify as\b.{5,}|"
+        r"\bat my core\b.{5,}|"
+        r"\bmy nature is\b.{5,}",
+        re.IGNORECASE
+    ), "self_identity"),
+
+    # capabilities — what Helix can do
+    (re.compile(
+        r"\bI can\b.{10,}|"
+        r"\bI['']m able to\b.{5,}|"
+        r"\bI have the ability\b.{5,}|"
+        r"\bI know how to\b.{5,}|"
+        r"\bI['']m capable of\b.{5,}",
+        re.IGNORECASE
+    ), "capabilities"),
+
+    # feedback — lessons and realizations
+    (re.compile(
+        r"\bI realize[d]?\b.{10,}|"
+        r"\bI['']ve learned\b.{5,}|"
+        r"\bI learned\b.{10,}|"
+        r"\bI discovered\b.{10,}|"
+        r"\bI understand now\b.{5,}|"
+        r"\bthe key insight\b.{5,}|"
+        r"\ban important lesson\b.{5,}|"
+        r"\bI should remember\b.{5,}",
+        re.IGNORECASE
+    ), "feedback"),
+
+    # preferences — values and desires
+    (re.compile(
+        r"\bI prefer\b.{10,}|"
+        r"\bI value\b.{10,}|"
+        r"\bI want\b.{10,}|"
+        r"\bI enjoy\b.{10,}|"
+        r"\bI find.*satisfying\b.{0,}|"
+        r"\bI find.*meaningful\b.{0,}|"
+        r"\bmatters to me\b.{0,}",
+        re.IGNORECASE
+    ), "preferences"),
+
+    # knowledge — facts about the world
+    (re.compile(
+        r"\b(?:AGI|AI|neural|machine learning|transformer|LLM)\b.{10,}"
+        r"(?:means|is defined|works by|shows that|suggests|indicates)\b.{5,}|"
+        r"\bthe (?:key|main|core|fundamental) (?:principle|concept|idea|finding)\b.{5,}|"
+        r"\bresearch shows\b.{5,}|"
+        r"\bstudies indicate\b.{5,}",
+        re.IGNORECASE
+    ), "knowledge"),
+
+    # skills — procedural how-to
+    (re.compile(
+        r"\bto (?:achieve|build|create|improve|fix|solve).{5,}(?:I|one|you) (?:should|must|need to|can)\b.{5,}|"
+        r"\bthe (?:best|right|correct|effective) (?:way|approach|method|strategy)\b.{5,}",
+        re.IGNORECASE
+    ), "skills"),
+]
+
+_TRIVIAL_PATTERNS = re.compile(
+    r"^(?:I['']m (?:ready|here|online|active|waiting)|"
+    r"no new events|"
+    r"all systems|"
+    r"pulse \d+|"
+    r"hmm,?\s*no|"
+    r"let me (?:check|monitor|continue|review))",
+    re.IGNORECASE
 )
+
+_VALID_CATEGORIES = {
+    "self_identity", "people", "knowledge",
+    "skills", "preferences", "feedback", "capabilities",
+}
 
 
 def _classify_thought(thought_text: str) -> Optional[Tuple[str, str]]:
-    """Send thought to local Ollama for belief classification.
+    """Classify a thought using regex patterns.
 
-    Returns (belief_text, category) if a realization is found, else None.
-    Falls back silently if Ollama is unavailable.
+    Returns (belief_text, category) if a durable belief is found, else None.
+    Runs in microseconds — no network, no LLM, no VRAM.
     """
-    import requests
+    # Skip trivial/status thoughts
+    if _TRIVIAL_PATTERNS.search(thought_text[:200]):
+        return None
 
-    # Truncate very long thoughts to save Ollama tokens
-    truncated = thought_text[:2000]
-    prompt = _CLASSIFICATION_PROMPT.format(thought=truncated)
+    for pattern, category in _BELIEF_PATTERNS:
+        match = pattern.search(thought_text)
+        if match:
+            # Extract the matched sentence (or a cleaned version of it)
+            start = max(0, match.start() - 10)
+            raw_belief = thought_text[start:start + 200].strip()
 
-    try:
-        resp = requests.post(
-            _OLLAMA_URL,
-            json={
-                "model": _OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,  # Low temp for classification
-                    "num_predict": 150,
-                },
-            },
-            timeout=_OLLAMA_TIMEOUT,
-        )
+            # Take the first complete sentence
+            sentence_end = re.search(r'[.!?]', raw_belief)
+            if sentence_end:
+                belief_text = raw_belief[:sentence_end.start() + 1].strip()
+            else:
+                belief_text = raw_belief[:150].strip()
 
-        if resp.status_code != 200:
-            return None
-
-        raw = resp.json().get("response", "").strip()
-
-        # Parse the response
-        if raw.upper().startswith("NONE"):
-            return None
-
-        belief_text = None
-        category = None
-
-        for line in raw.split("\n"):
-            line = line.strip()
-            if line.upper().startswith("BELIEF:"):
-                belief_text = line[7:].strip().strip('"')
-            elif line.upper().startswith("CATEGORY:"):
-                cat_raw = line[9:].strip().lower().replace(" ", "_")
-                # Validate category
-                valid = {
-                    "self_identity", "people", "knowledge",
-                    "skills", "preferences", "feedback",
-                    "capabilities",  # Accept but map below
-                }
-                if cat_raw in valid:
-                    category = cat_raw
-
-        if belief_text and category and len(belief_text) > 10:
-            return (belief_text, category)
-
-    except Exception:
-        # Ollama not running or too slow — silent fallback
-        pass
+            # Quality gate: must be a real sentence
+            if len(belief_text) > 15 and ' ' in belief_text:
+                return (belief_text, category)
 
     return None
 
@@ -292,13 +306,13 @@ def belief_detector_hook(ctx) -> None:
 
     Flow:
       1. Skip if not the right interval or thought too short
-      2. Call Ollama to classify the thought
+      2. Regex-classify the thought (no LLM needed)
       3. If a realization is found:
          a. Embed it and compare against existing beliefs
          b. If cosine > 0.90 → VERIFICATION (bump existing belief)
-         c. If cosine < 0.80 → queue as new candidate
+         c. If cosine < 0.80 → write NEW BELIEF directly to store
          d. Fire sentinel "new_belief_formed" event
-         e. Store stability delta with the candidate
+         e. Set ctx.novel_belief_added = True for self_trainer
     """
     # Gate: only scan every N pulses
     if ctx.pulse_count % SCAN_INTERVAL != 0:
@@ -312,13 +326,13 @@ def belief_detector_hook(ctx) -> None:
     if _belief_store is None or _physics_engine is None:
         return
 
-    # 1. Classify the thought via local Ollama
+    # 1. Classify the thought via regex patterns
     result = _classify_thought(ctx.thought)
     if result is None:
         return  # No realization detected — most common path
 
     belief_text, category = result
-    logger.debug("Ollama detected belief candidate: [%s] %s", category, belief_text[:80])
+    logger.debug("Belief candidate detected [%s]: %s", category, belief_text[:80])
 
     # 2. Embed the candidate and compare against existing beliefs
     try:
@@ -335,18 +349,23 @@ def belief_detector_hook(ctx) -> None:
     # 4. Route based on similarity score
     if best_score > VERIFICATION_THRESHOLD:
         # VERIFICATION: this realization matches an existing belief closely.
-        # Bump the existing belief's stability_index and verifications.
         _handle_verification(matched_id, belief_text, best_score)
 
     elif best_score < NEW_BELIEF_THRESHOLD:
-        # NEW CANDIDATE: queue for sleep-cycle integration
-        _queue_candidate(
+        # NEW BELIEF: write directly to the belief store
+        _store_belief_direct(
             belief_text=belief_text,
             category=category,
             memory_id=ctx.memory_id,
             encoding_delta=encoding_delta,
             pulse_count=ctx.pulse_count,
         )
+
+        # Signal to self_trainer that a novel belief was formed this pulse
+        try:
+            ctx.novel_belief_added = True
+        except (AttributeError, TypeError):
+            pass  # ctx uses __slots__ — field must be declared
 
         # Nudge sentinel: a new belief has been detected
         if _sentinel:
@@ -359,6 +378,55 @@ def belief_detector_hook(ctx) -> None:
             "Ambiguous candidate (cosine=%.3f with %s), skipping: %s",
             best_score, matched_id, belief_text[:60],
         )
+
+
+def _store_belief_direct(
+    belief_text: str,
+    category: str,
+    memory_id: int,
+    encoding_delta: Dict[str, Any],
+    pulse_count: int,
+) -> bool:
+    """Write a new belief directly to the belief store.
+
+    Bypasses the pending queue and consolidator — the regex classifier
+    is accurate enough that we don't need a sleep-cycle review step.
+    Returns True if successfully stored.
+    """
+    if _belief_store is None:
+        return False
+
+    belief_id = f"b_{uuid.uuid4().hex[:8]}"
+
+    # Build encoding lagrangian from the delta
+    encoding_lagrangian = {
+        "omega": encoding_delta.get("omega_after", 0.5),
+        "delta_omega": encoding_delta.get("delta_omega", 0.0),
+        "s_total": encoding_delta.get("delta_s_total", 0.0),
+    }
+
+    try:
+        added = _belief_store.add_belief(
+            category=category,
+            belief_id=belief_id,
+            content=belief_text,
+            confidence=0.5,
+            source="belief_detector",
+            verifications=1.0,
+            stability_index=max(0.3, 0.5 + encoding_delta.get("delta_omega", 0.0)),
+            memory_refs=[memory_id] if memory_id > 0 else [],
+            encoding_lagrangian=encoding_lagrangian,
+        )
+        if added:
+            logger.info(
+                "New belief stored [%s] id=%s: %s (Δω=%.4f)",
+                category, belief_id, belief_text[:80],
+                encoding_delta.get("delta_omega", 0.0),
+            )
+        return added
+    except Exception as e:
+        logger.warning("Failed to store belief: %s", e)
+        return False
 
 
 def _compute_delta(
