@@ -33,16 +33,18 @@ def _load():
     if _model is not None:
         return True
     try:
-        import torch
         from transformers import AutoTokenizer, AutoModel
 
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        _device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"[gpu_embedder] Loading {model_name} on {_device.upper()}...")
+        # Force CPU — Hermes-3 (8B 4-bit) needs the full GPU during inference.
+        # The mini embedder on CPU is ~300-500ms, which is fine since embedding
+        # runs in the async hook thread and doesn't block the pulse loop.
+        _device = "cpu"
+        logger.info(f"[gpu_embedder] Loading {model_name} on CPU (GPU reserved for Hermes-3)...")
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         _model = AutoModel.from_pretrained(model_name).to(_device)
         _model.eval()
-        logger.info(f"[gpu_embedder] ✅ Embedder ready on {_device.upper()}")
+        logger.info(f"[gpu_embedder] ✅ Embedder ready on CPU")
         return True
     except Exception as e:
         logger.warning(f"[gpu_embedder] Load failed: {e}")
