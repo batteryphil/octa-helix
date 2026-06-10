@@ -61,7 +61,7 @@ class PulseLoop:
     # Pulse intervals (seconds) — 3-tier gradient
     ACTIVE_INTERVAL = 10       # 10s — fast response during conversation
     REGULAR_INTERVAL = 30      # 30s — autonomous task work
-    RESTING_INTERVAL = 900     # 15 min — idle background presence
+    RESTING_INTERVAL = 60      # 60s — steady autonomous presence (was 900s/15min)
     DORMANT_CHECK = 60         # How often to check for wake during sleep
 
     # Timeout durations for state transitions
