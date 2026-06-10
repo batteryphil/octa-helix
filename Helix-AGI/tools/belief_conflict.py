@@ -1,29 +1,23 @@
 import json
 import os
+import sys
+import requests
+from bs4 import BeautifulSoup
+import psutil
+import re
 from pathlib import Path
-from typing import List, Dict, Any
 
-def load_beliefs(filename: str) -> List[Dict[str, Any]]:
-    with open(filename, 'r') as f:
-        return json.load(f)
-
-def resolve_conflict(belief1: Dict[str, Any], belief2: Dict[str, Any]) -> Dict[str, Any]:
+def resolve_conflict(belief1, belief2):
     # Placeholder resolution function
-    return {"new_belief": "Resolution of conflict between {} and {}".format(belief1['belief'], belief2['belief'])}
+    # In a real implementation, this would involve analyzing evidence and updating beliefs accordingly
+    print(f"Resolving conflict between {belief1} and {belief2}")
+    return "Resolved"
 
-def find_conflicts(beliefs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def find_conflicts(belief_store):
     conflicts = []
-    for i, belief1 in enumerate(beliefs):
-        for belief2 in beliefs[i+1:]:
-            if belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7 and belief1['belief'] != belief2['belief']:
-                conflicts.append({"conflict": (belief1['belief'], belief2['belief'])})
+    for i, belief1 in enumerate(belief_store):
+        for belief2 in belief_store[i+1:]:
+            if belief1["confidence"] > 0.7 and belief2["confidence"] > 0.7:
+                if belief1["content"] != belief2["content"] and re.search(belief1["content"], belief2["content"]):
+                    conflicts.append((belief1, belief2))
     return conflicts
-
-def main():
-    filename = "beliefs.json"
-    beliefs = load_beliefs(filename)
-    conflicts = find_conflicts(beliefs)
-    print(json.dumps(conflicts, indent=2))
-
-if __name__ == "__main__":
-    main()
