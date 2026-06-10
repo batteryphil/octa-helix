@@ -369,7 +369,7 @@ Fix the error. Key rules:
             # 2. Import test — catches missing deps, bad imports
             module_name = path.replace("/", ".").replace(".py", "")
             import_test = fc_run_python(
-                f"import importlib, sys\n"
+                f"import importlib.util, sys\n"
                 f"sys.path.insert(0, '.')\n"
                 f"spec = importlib.util.spec_from_file_location('_test_mod', '{path}')\n"
                 f"mod = importlib.util.module_from_spec(spec)\n"
