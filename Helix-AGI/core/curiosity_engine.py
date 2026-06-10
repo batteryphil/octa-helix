@@ -218,6 +218,23 @@ class CuriosityEngine:
 
     # ── Question generation ───────────────────────────────────────────────────
 
+    def _is_semantically_duplicate(self, question: str, window: int = 50) -> bool:
+        """Check if question is semantically similar to recent questions.
+
+        Peer review Q12: exact-string dedup fails when LLM slightly rephrases
+        the same question (e.g. 5x the sleep consolidation question).
+        fuzzywuzzy token_sort_ratio is order-insensitive and handles rephrasing.
+        """
+        try:
+            from fuzzywuzzy import fuzz
+            recent = self._asked[-window:]
+            for prev in recent:
+                if fuzz.token_sort_ratio(question.lower(), prev.lower()) > 80:
+                    return True
+        except ImportError:
+            pass  # fuzzywuzzy not available, fall back to exact-string only
+        return False
+
     def _generate_question(self) -> str:
         """Pick or generate the next question to investigate.
 
@@ -229,10 +246,8 @@ class CuriosityEngine:
           12% world/tech      ← AI research news
            8% belief-gap      ← low-confidence belief derivation
 
-        Deep Think Q10: unbounded self-generated curiosity causes epistemic
-        bubble collapse. Cap enforced: self-generated questions never exceed
-        30% of this session's total questions asked. Remaining rolls fall
-        through to hardcoded seeds to ground Helix back in reality.
+        Peer review Q10: self-generated cap enforced at 30% of session total.
+        Peer review Q12: fuzzywuzzy semantic dedup prevents epistemic bubbles.
         """
         roll = random.random()
         total = max(1, self.total_questions_asked)
@@ -244,21 +259,25 @@ class CuriosityEngine:
                 if q in self._self_generated_seeds
             )
             if self_gen_count / total < 0.30:  # under cap — allow
-                candidates = [q for q in reversed(self._self_generated_seeds)
-                              if q not in self._asked]
+                candidates = [
+                    q for q in reversed(self._self_generated_seeds)
+                    if q not in self._asked and not self._is_semantically_duplicate(q)
+                ]
                 if candidates:
                     self._last_question_is_improvement = False
                     logger.info("[CURIOSITY] Self-generated question selected")
                     return candidates[0]
-            # else: over cap — fall through to grounding seeds
+            # else: over cap or all dupes — fall through to grounding seeds
 
         # 20%: repo research (self-repo first, then others)
         if roll < 0.40:
             import os
             has_token = bool(os.environ.get("GITHUB_TOKEN", "").strip())
             if has_token:
-                self_repo   = [q for q in REPO_RESEARCH_SEEDS[:5] if q not in self._asked]
-                other_repos = [q for q in REPO_RESEARCH_SEEDS[5:] if q not in self._asked]
+                self_repo   = [q for q in REPO_RESEARCH_SEEDS[:5]
+                               if q not in self._asked and not self._is_semantically_duplicate(q)]
+                other_repos = [q for q in REPO_RESEARCH_SEEDS[5:]
+                               if q not in self._asked and not self._is_semantically_duplicate(q)]
                 candidates  = self_repo or other_repos
                 if candidates:
                     self._last_question_is_improvement = False
@@ -266,21 +285,30 @@ class CuriosityEngine:
 
         # 20%: self-directed improvement seed
         if roll < 0.60:
-            candidates = [q for q in SELF_IMPROVEMENT_SEEDS if q not in self._asked]
+            candidates = [
+                q for q in SELF_IMPROVEMENT_SEEDS
+                if q not in self._asked and not self._is_semantically_duplicate(q)
+            ]
             if candidates:
                 self._last_question_is_improvement = True
                 return random.choice(candidates)
 
         # 20%: question about self
         if roll < 0.80:
-            candidates = [q for q in SELF_CURIOSITY_SEEDS if q not in self._asked]
+            candidates = [
+                q for q in SELF_CURIOSITY_SEEDS
+                if q not in self._asked and not self._is_semantically_duplicate(q)
+            ]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
         # 12%: world/tech question
         if roll < 0.92:
-            candidates = [q for q in WORLD_CURIOSITY_SEEDS if q not in self._asked]
+            candidates = [
+                q for q in WORLD_CURIOSITY_SEEDS
+                if q not in self._asked and not self._is_semantically_duplicate(q)
+            ]
             if candidates:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
@@ -296,7 +324,9 @@ class CuriosityEngine:
             ]
             if low_conf:
                 b = random.choice(low_conf)
-                return f"I want to verify or deepen my understanding of: {b['content']}"
+                q = f"I want to verify or deepen my understanding of: {b['content']}"
+                if not self._is_semantically_duplicate(q):
+                    return q
         except Exception:
             pass
 
@@ -304,10 +334,15 @@ class CuriosityEngine:
         if self._self_generated_seeds:
             self_gen_count = sum(1 for q in self._asked if q in self._self_generated_seeds)
             if self_gen_count / total < 0.30:
-                remaining = [q for q in reversed(self._self_generated_seeds) if q not in self._asked]
+                remaining = [
+                    q for q in reversed(self._self_generated_seeds)
+                    if q not in self._asked and not self._is_semantically_duplicate(q)
+                ]
                 if remaining:
                     return remaining[0]
-        return random.choice(SELF_CURIOSITY_SEEDS)
+        # Final fallback: hardcoded seed that hasn't been semantically duplicated
+        fresh = [q for q in SELF_CURIOSITY_SEEDS if not self._is_semantically_duplicate(q)]
+        return random.choice(fresh) if fresh else random.choice(SELF_CURIOSITY_SEEDS)
 
 
     # ── Research cycle ────────────────────────────────────────────────────────

@@ -153,12 +153,59 @@ _VALID_CATEGORIES = {
 }
 
 
+def _extract_xml_belief(thought_text: str) -> Optional[Tuple[str, str]]:
+    """Extract belief from XML tag if present (Q13 peer review fix).
+
+    The pulse loop now instructs Helix to wrap new beliefs in <belief>...</belief>.
+    This is exponentially more reliable than regex on prose — the content is
+    extracted exactly as written, with no offset clipping.
+
+    Returns (belief_text, category) or None if no tag found.
+    """
+    match = re.search(r'<belief>(.*?)</belief>', thought_text, re.DOTALL | re.IGNORECASE)
+    if not match:
+        return None
+
+    belief_text = match.group(1).strip()
+    if len(belief_text) < 10 or ' ' not in belief_text:
+        return None  # Too short or malformed
+
+    # Classify the XML-extracted belief using keyword matching
+    belief_lower = belief_text.lower()
+    if any(k in belief_lower for k in ['i am', 'i\'m', 'my purpose', 'i exist', 'my identity']):
+        category = 'self_identity'
+    elif any(k in belief_lower for k in ['i can', 'i am able', 'i have the ability', 'capable of']):
+        category = 'capabilities'
+    elif any(k in belief_lower for k in ['i know', 'i understand', 'i learned', 'research shows']):
+        category = 'knowledge'
+    elif any(k in belief_lower for k in ['i prefer', 'i value', 'i like', 'i find']):
+        category = 'preferences'
+    elif any(k in belief_lower for k in ['i should', 'i will', 'my goal', 'i want to']):
+        category = 'skills'
+    elif any(k in belief_lower for k in ['mistake', 'lesson', 'failed', 'learned from']):
+        category = 'feedback'
+    else:
+        category = 'knowledge'  # default
+
+    logger.info(f"[belief_detector] XML belief extracted: category={category} len={len(belief_text)}")
+    return (belief_text, category)
+
+
 def _classify_thought(thought_text: str) -> Optional[Tuple[str, str]]:
-    """Classify a thought using regex patterns.
+    """Classify a thought to extract a belief.
+
+    Two-stage extraction (Q13 peer review):
+      1. XML tag: <belief>...</belief> — exact, no offset clipping
+      2. Regex patterns — fallback for prose without XML tags
 
     Returns (belief_text, category) if a durable belief is found, else None.
-    Runs in microseconds — no network, no LLM, no VRAM.
     """
+    # Stage 1: XML tag extraction (preferred — perfect accuracy)
+    xml_result = _extract_xml_belief(thought_text)
+    if xml_result:
+        return xml_result
+
+    # Stage 2: Regex fallback (legacy path)
     # Skip trivial/status thoughts
     if _TRIVIAL_PATTERNS.search(thought_text[:200]):
         return None
@@ -166,9 +213,10 @@ def _classify_thought(thought_text: str) -> Optional[Tuple[str, str]]:
     for pattern, category in _BELIEF_PATTERNS:
         match = pattern.search(thought_text)
         if match:
-            # Extract the matched sentence (or a cleaned version of it)
-            start = max(0, match.start() - 10)
-            raw_belief = thought_text[start:start + 200].strip()
+            # Extract the matched sentence cleanly from match start
+            # Fix Q13: use match.start() directly (not -10 offset) to avoid
+            # extracting mid-sentence fragments before the matched keyword.
+            raw_belief = thought_text[match.start():match.start() + 200].strip()
 
             # Take the first complete sentence
             sentence_end = re.search(r'[.!?]', raw_belief)

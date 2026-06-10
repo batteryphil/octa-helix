@@ -950,33 +950,68 @@ class PulseLoop:
             )
 
         # ── Active Tool Mandate (every 3rd autonomous pulse) ──────────────────
-        # Gemini Pro analysis: tool_call_rate=0% means all tools are decorative.
-        # The agent must be forced to EXECUTE tools, not just write them.
+        # Peer review Q1: tool_call_rate=0% means all tools are decorative.
         # Every 3rd pulse: pick a tool from registry and mandate its use.
+        # Every 15th pulse: INTROSPECTION MODE — force agent to look inward.
         if self._pulse_count % 3 == 0:
             try:
                 from tools.tool_registry import registry
                 available = registry.list_tools(self._active_toolsets)
                 if available:
                     import random
-                    # Pick a tool that seems actionable for self-monitoring
-                    preferred = [t for t in available if any(
-                        k in t.lower() for k in
-                        ["health", "search", "note", "task", "belief", "memory",
-                         "system", "metric", "novelty", "error", "url"]
-                    )]
-                    tool_name = random.choice(preferred) if preferred else random.choice(available)
-                    parts.append(
-                        f"\n[ACTIVE PULSE — TOOL REQUIRED]\n"
-                        f"You must call at least one tool before completing this thought. "
-                        f"Suggested: [{tool_name.upper()}:] — but choose whichever tool "
-                        f"is most relevant to your current goal or belief state. "
-                        f"Review your beliefs, check system state, search for something "
-                        f"you're curious about, or validate a hypothesis. "
-                        f"Do not complete this pulse with prose only."
-                    )
+
+                    # Every 15th pulse: introspection mandate (Q15 peer review)
+                    # Forces cognitive mode inward on rigid schedule so the agent
+                    # doesn't spend every cycle looking outward.
+                    if self._pulse_count % 15 == 0:
+                        introspection_tools = [t for t in available if any(
+                            k in t.lower() for k in
+                            ["fitness", "system_health", "behavior", "curiosity_tracker",
+                             "metrics", "health", "performance", "self"]
+                        )]
+                        tool_name = random.choice(introspection_tools) if introspection_tools \
+                            else random.choice(available)
+                        parts.append(
+                            f"\n[INTROSPECTION PULSE — SELF-MONITORING REQUIRED]\n"
+                            f"This is a scheduled self-examination pulse. You MUST call an "
+                            f"introspection tool before completing this thought. "
+                            f"Suggested: [{tool_name.upper()}:] "
+                            f"Check your own system health, fitness trend, or behavioral patterns. "
+                            f"What is your current state? What is working? What needs attention? "
+                            f"Do not complete this pulse with prose only."
+                        )
+                    else:
+                        # Standard mandate — prefer actionable self-monitoring tools
+                        preferred = [t for t in available if any(
+                            k in t.lower() for k in
+                            ["health", "search", "note", "task", "belief", "memory",
+                             "system", "metric", "novelty", "error", "url"]
+                        )]
+                        tool_name = random.choice(preferred) if preferred else random.choice(available)
+                        parts.append(
+                            f"\n[ACTIVE PULSE — TOOL REQUIRED]\n"
+                            f"You must call at least one tool before completing this thought. "
+                            f"Suggested: [{tool_name.upper()}:] — but choose whichever tool "
+                            f"is most relevant to your current goal or belief state. "
+                            f"Review your beliefs, check system state, search for something "
+                            f"you're curious about, or validate a hypothesis. "
+                            f"Do not complete this pulse with prose only."
+                        )
             except Exception:
                 pass
+
+        # ── XML Belief Tag Instruction (Q13 peer review) ──────────────────────
+        # Regex extraction on unstructured prose is brittle and causes belief
+        # content to be stored with offset clipping (starts mid-sentence).
+        # XML tags are exponentially more reliable for extraction.
+        # Instruction is lightweight — added to every pulse, not just mandate pulses.
+        parts.append(
+            "\n[BELIEF FORMATION]\n"
+            "If this pulse generates a new insight, belief, or realization about yourself, "
+            "the world, or your capabilities, wrap it exactly like this at the end of your response:\n"
+            "<belief>The exact belief statement in one clear sentence.</belief>\n"
+            "Only use this tag if you genuinely formed a new belief. Do not force it."
+        )
 
         return "\n".join(parts)
 

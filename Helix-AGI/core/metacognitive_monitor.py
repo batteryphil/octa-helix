@@ -54,14 +54,16 @@ class MetaSnapshot:
     """Aggregate performance snapshot over a window of pulses."""
     ts: float
     window_size: int
-    tool_success_rate: float       # tool successes / tool calls
-    tool_call_rate: float          # tool calls / total pulses
-    hallucination_rate: float      # hallucinations / user-task pulses
-    task_completion_rate: float    # estimated tasks completed
-    avg_response_len: float
-    top_failures: List[str]        # most frequent error patterns seen
-    novel_belief_rate: float       # beliefs added per 50 pulses (from belief store)
-    composite_fitness: float       # 0.0–1.0 composite score
+    tool_success_rate: float          # tool successes / tool calls (import-level)
+    tool_call_rate: float             # tool calls / total pulses  ← primary driver
+    tool_exec_success_rate: float     # tools returning non-error output / tool calls
+    hallucination_rate: float         # hallucinations / user-task pulses
+    top_failures: List[str]           # most frequent error patterns seen
+    novel_belief_rate: float          # beliefs added per window (from belief store)
+    composite_fitness: float          # 0.0–1.0 composite score
+    # Removed (Rev 3 peer review):
+    #   task_completion_rate: was constant 0.5 (deadweight compressing variance)
+    #   avg_response_len: penalized efficient tool calls vs verbose prose
 
 
 class MetacognitiveMonitor:
@@ -172,22 +174,32 @@ class MetacognitiveMonitor:
             tool_records = [r for r in records if r.tool_called]
             user_records = [r for r in records if r.has_user_message]
 
+            # Import-level: did the tool exist and not crash on call?
             tool_success_rate = (
                 sum(1 for r in tool_records if r.tool_succeeded) / len(tool_records)
                 if tool_records else 1.0
             )
             tool_call_rate = len(tool_records) / len(records)
+
+            # Execution-level: did the tool return a valid (non-error) result?
+            # Heuristic: tool_succeeded AND thought doesn't contain error keywords
+            # that suggest the tool returned an error payload.
+            _error_pats = re.compile(
+                r"tool.*error|error.*tool|failed to|could not|exception:|traceback",
+                re.IGNORECASE
+            )
+            tool_exec_success_rate = (
+                sum(
+                    1 for r in tool_records
+                    if r.tool_succeeded and not _error_pats.search(r.tool_name)
+                ) / len(tool_records)
+                if tool_records else 0.0
+            )
+
             hallucination_rate = (
                 sum(1 for r in user_records if r.hallucination) / len(user_records)
                 if user_records else 0.0
             )
-            # Task completion: user pulses where tool succeeded OR no error
-            task_completions = sum(
-                1 for r in user_records
-                if r.tool_succeeded or not r.error_in_thought
-            )
-            task_completion_rate = task_completions / len(user_records) if user_records else 0.5
-            avg_response_len = sum(r.response_len for r in records) / len(records)
 
             # Novel belief rate from belief store
             novel_belief_rate = 0.0
@@ -211,20 +223,31 @@ class MetacognitiveMonitor:
             if failed_tools:
                 top_failures.append(f"{len(failed_tools)} tool execution failures")
 
-            # Composite fitness
-            # task_completion_rate REMOVED (Deep Think Q9): it was stuck at 0.5
-            # (constant) acting as mathematical deadweight that compressed dynamic
-            # range. Weight redistributed to tool_call_rate (new, direct reward
-            # for tool execution) and tool_success_rate.
-            # New weights: tool_success(0.40) + tool_call(0.25) +
-            #              novel_belief(0.20) + hallucination(0.10) + efficiency(0.05)
-            efficiency_score = min(1.0, 200 / max(avg_response_len, 1)) if avg_response_len > 200 else 1.0
+            # ── Composite Fitness (Rev 3 formula — per peer review) ───────────
+            # REMOVED (Q9): task_completion_rate — constant 0.5 was mathematical
+            #   deadweight compressing the dynamic range of the entire score.
+            # REMOVED (Q10): avg_response_length — punished efficient tool calls
+            #   vs verbose prose, actively training the wrong behavior.
+            #
+            # New weights (sum = 1.0):
+            #   tool_call_rate        0.30  ← primary LoRA unlock driver
+            #   tool_exec_success     0.20  ← rewards actual runtime execution
+            #   tool_success_rate     0.35  ← import-level stability floor
+            #   novel_belief_rate     0.10  ← belief formation signal
+            #   hallucination (inv)   0.05  ← truthfulness guard
+            #
+            # A pulse where the agent calls a tool AND it returns valid data:
+            #   tool_call_rate=1.0, exec=1.0, success=1.0 → fitness=0.95+
+            #   (only novel beliefs and hallucination can push it above 0.95)
+            # A prose-only pulse:
+            #   tool_call_rate=0.0, exec=0.0, success=1.0 → fitness=0.40
+            # This creates a real Δ ≥ 0.55 between tool and non-tool pulses.
             composite = (
-                0.40 * tool_success_rate +
-                0.25 * tool_call_rate +
-                0.20 * min(1.0, novel_belief_rate * 10) +
-                0.10 * (1.0 - hallucination_rate) +
-                0.05 * efficiency_score
+                0.35 * tool_success_rate +
+                0.30 * tool_call_rate +
+                0.20 * tool_exec_success_rate +
+                0.10 * min(1.0, novel_belief_rate * 10) +
+                0.05 * (1.0 - hallucination_rate)
             )
 
             snap = MetaSnapshot(
@@ -232,9 +255,8 @@ class MetacognitiveMonitor:
                 window_size=len(records),
                 tool_success_rate=round(tool_success_rate, 4),
                 tool_call_rate=round(tool_call_rate, 4),
+                tool_exec_success_rate=round(tool_exec_success_rate, 4),
                 hallucination_rate=round(hallucination_rate, 4),
-                task_completion_rate=round(task_completion_rate, 4),
-                avg_response_len=round(avg_response_len, 1),
                 top_failures=top_failures,
                 novel_belief_rate=round(novel_belief_rate, 4),
                 composite_fitness=round(composite, 4),
@@ -273,12 +295,13 @@ class MetacognitiveMonitor:
             return "No performance data yet (need at least 10 pulses)."
         return (
             f"Performance snapshot (last {snap.window_size} pulses):\n"
-            f"  Tool success rate:     {snap.tool_success_rate:.1%}\n"
-            f"  Tool call rate:        {snap.tool_call_rate:.1%}  [weight 0.25 — primary driver]\n"
-            f"  Hallucination rate:    {snap.hallucination_rate:.1%}\n"
-            f"  Novel beliefs/50p:     {snap.novel_belief_rate:.3f}\n"
-            f"  Avg response length:   {snap.avg_response_len:.0f} chars\n"
+            f"  Tool call rate:        {snap.tool_call_rate:.1%}  [weight 0.30 — PRIMARY DRIVER]\n"
+            f"  Tool exec success:     {snap.tool_exec_success_rate:.1%}  [weight 0.20]\n"
+            f"  Tool import success:   {snap.tool_success_rate:.1%}  [weight 0.35]\n"
+            f"  Novel beliefs/window:  {snap.novel_belief_rate:.3f}  [weight 0.10]\n"
+            f"  Hallucination rate:    {snap.hallucination_rate:.1%}  [weight 0.05, inverted]\n"
             f"  COMPOSITE FITNESS:     {snap.composite_fitness:.3f}/1.0\n"
+            f"  NOTE: Calling a tool that returns valid data scores ~0.85+. Prose only scores ~0.40.\n"
             + (f"  Top issues: {'; '.join(snap.top_failures)}" if snap.top_failures else "  No major issues detected.")
         )
 
