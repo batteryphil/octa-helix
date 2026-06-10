@@ -1,27 +1,27 @@
 import json
-import jsonlines
+import requests
+from bs4 import BeautifulSoup
 import re
 
-def search_knowledge(keyword, file_path):
-    with jsonlines.open(file_path) as f:
-        results = []
-        for line in f:
-            entry = json.loads(line)
-            if keyword in entry['title'] or keyword in entry['content']:
-                results.append(entry)
-            if len(results) >= 3:
-                break
-    return results
+class KnowledgeBaseSearch:
+    def __init__(self, url):
+        self.url = url
+        self.page = requests.get(url)
+        self.soup = BeautifulSoup(self.page.content, 'html.parser')
+
+    def search(self, query):
+        query = query.lower()
+        search_results = []
+        for match in self.soup.find_all(string=lambda text: query in text.lower()):
+            search_results.append(str(match))
+        return search_results
 
 def main():
-    keyword = input("Enter a search keyword: ")
-    file_path = "curiosity_knowledge.jsonl"
-    results = search_knowledge(keyword, file_path)
-    for i, result in enumerate(results, start=1):
-        print(f"Result {i}:")
-        print(f"Title: {result['title']}")
-        print(f"Content: {result['content']}")
-        print()
+    url = 'https://example.com/knowledge-base'
+    query = 'example query'
+    search = KnowledgeBaseSearch(url)
+    results = search.search(query)
+    print(json.dumps({'query': query, 'results': results}))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
