@@ -1,31 +1,29 @@
 import json
-import sys
+import os
 from pathlib import Path
+from typing import List, Dict, Any
 
-def load_beliefs(filename: Path) -> list:
+def load_beliefs(filename: str) -> List[Dict[str, Any]]:
     with open(filename, 'r') as f:
         return json.load(f)
 
-def belief_conflicts(beliefs: list) -> list:
+def resolve_conflict(belief1: Dict[str, Any], belief2: Dict[str, Any]) -> Dict[str, Any]:
+    # Placeholder resolution function
+    return {"new_belief": "Resolution of conflict between {} and {}".format(belief1['belief'], belief2['belief'])}
+
+def find_conflicts(beliefs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     conflicts = []
     for i, belief1 in enumerate(beliefs):
         for belief2 in beliefs[i+1:]:
-            if belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7:
-                if belief1['content'] == belief2['content']:
-                    continue
-                conflicts.append((belief1['content'], belief2['content']))
+            if belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7 and belief1['belief'] != belief2['belief']:
+                conflicts.append({"conflict": (belief1['belief'], belief2['belief'])})
     return conflicts
 
-def resolve_conflict(belief1: str, belief2: str) -> str:
-    # Placeholder resolution logic
-    return f"Reconciled: {belief1} and {belief2}"
-
 def main():
-    beliefs_file = Path("beliefs.json")
-    beliefs = load_beliefs(beliefs_file)
-    conflicts = belief_conflicts(beliefs)
-    for conflict in conflicts:
-        print(resolve_conflict(*conflict))
+    filename = "beliefs.json"
+    beliefs = load_beliefs(filename)
+    conflicts = find_conflicts(beliefs)
+    print(json.dumps(conflicts, indent=2))
 
 if __name__ == "__main__":
     main()
