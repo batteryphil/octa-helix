@@ -1,38 +1,33 @@
 import json
 import os
-import sys
-import requests
-from bs4 import BeautifulSoup
 from pathlib import Path
 from typing import List, Tuple
 
-# Load belief store
-def load_belief_store() -> List[dict]:
-    store_path = Path("belief_store.json")
-    with open(store_path, "r") as f:
-        return json.load(f)
+def load_beliefs(filename: str) -> List[Tuple[str, float]]:
+    with open(filename, 'r') as f:
+        beliefs = json.load(f)
+    return [(belief['statement'], belief['confidence']) for belief in beliefs if belief['confidence'] > 0.8]
 
-# Parse belief text to extract key points
-def parse_belief_text(text: str) -> Tuple[str, str]:
-    # TODO: Implement parsing logic here
-    return ("", "")
-
-# Identify conflicting beliefs
-def identify_conflicts(beliefs: List[dict]) -> List[Tuple[str, str, str, str]]:
+def find_conflicts(beliefs: List[Tuple[str, float]]) -> List[Tuple[str, str, float, float]]:
     conflicts = []
-    for i, belief1 in enumerate(beliefs):
-        for belief2 in beliefs[i+1:]:
-            if belief1["confidence"] > 0.7 and belief2["confidence"] > 0.7:
-                p1, s1 = parse_belief_text(belief1["text"])
-                p2, s2 = parse_belief_text(belief2["text"])
-                conflicts.append(((p1, s1), (p2, s2)))
+    for i in range(len(beliefs)):
+        for j in range(i+1, len(beliefs)):
+            if beliefs[i][0] != beliefs[j][0] and (beliefs[i][0] or beliefs[j][0]).lower() in (beliefs[j][0] or beliefs[i][0]).lower():
+                conflicts.append((beliefs[i][0], beliefs[j][0], beliefs[i][1], beliefs[j][1]))
     return conflicts
 
-# Main function to run the tool
-def main():
-    beliefs = load_belief_store()
-    conflicts = identify_conflicts(beliefs)
-    print(json.dumps(conflicts, indent=2))
+def save_conflicts(conflicts: List[Tuple[str, str, float, float]], filename: str):
+    Path(filename).write_text(json.dumps(conflicts, indent=2))
 
-if __name__ == "__main__":
+def main():
+    beliefs_file = 'beliefs.json'
+    conflicts_file = 'belief_conflicts.json'
+    
+    beliefs = load_beliefs(beliefs_file)
+    conflicts = find_conflicts(beliefs)
+    save_conflicts(conflicts, conflicts_file)
+    
+    print(f"Found {len(conflicts)} belief conflicts and saved to {conflicts_file}")
+
+if __name__ == '__main__':
     main()
