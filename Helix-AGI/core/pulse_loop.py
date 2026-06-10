@@ -956,13 +956,12 @@ class PulseLoop:
         if self._pulse_count % 3 == 0:
             try:
                 from tools.tool_registry import registry
-                available = registry.list_tools(self._active_toolsets)
+                # Correct method: get_tool_names(), not list_tools()
+                available = registry.get_tool_names()
                 if available:
                     import random
 
                     # Every 15th pulse: introspection mandate (Q15 peer review)
-                    # Forces cognitive mode inward on rigid schedule so the agent
-                    # doesn't spend every cycle looking outward.
                     if self._pulse_count % 15 == 0:
                         introspection_tools = [t for t in available if any(
                             k in t.lower() for k in
@@ -997,8 +996,10 @@ class PulseLoop:
                             f"you're curious about, or validate a hypothesis. "
                             f"Do not complete this pulse with prose only."
                         )
-            except Exception:
-                pass
+                else:
+                    logger.warning("[pulse] Tool mandate: registry returned empty tool list")
+            except Exception as _e:
+                logger.warning(f"[pulse] Tool mandate failed: {_e}")
 
         # ── XML Belief Tag Instruction (Q13 peer review) ──────────────────────
         # Regex extraction on unstructured prose is brittle and causes belief
