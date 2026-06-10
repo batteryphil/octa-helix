@@ -1,32 +1,24 @@
 import json
 import jsonlines
-import re
 import sys
 from pathlib import Path
 
-def load_knowledge_base():
-    file_path = Path(__file__).parent / "curiosity_knowledge.jsonl"
-    with file_path.open() as file:
-        return list(jsonlines.Reader(file))
+def search_curiosity_knowledge(query):
+    with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
+        entries = [entry for entry in f]
+    relevant_entries = sorted(entries, key=lambda entry: similarity(entry['text'], query), reverse=True)[:3]
+    return relevant_entries
 
-def search_insights(keyword, knowledge_base):
-    def relevance_score(insight):
-        return re.search(keyword.lower(), insight['title'].lower()) is not None
+def similarity(text1, text2):
+    words1 = text1.split()
+    words2 = text2.split()
+    return sum(1 for word in words1 if word in words2)
 
-    return sorted(filter(relevance_score, knowledge_base), reverse=True)[:3]
-
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python kb_search.py <keyword>")
-        return
-    
-    keyword = sys.argv[1]
-    knowledge_base = load_knowledge_base()
-    relevant_insights = search_insights(keyword, knowledge_base)
-    
-    print(f"Top 3 relevant insights for '{keyword}':")
-    for i, insight in enumerate(relevant_insights, 1):
-        print(f"{i}. {insight['title']} - {insight['summary']}")
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        query = ' '.join(sys.argv[1:])
+        relevant_entries = search_curiosity_knowledge(query)
+        for entry in relevant_entries:
+            print(json.dumps(entry, indent=2))
+    else:
+        print("Please provide a search query.")
