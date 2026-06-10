@@ -1,36 +1,27 @@
 import json
-from typing import List, Dict, Tuple
+from pathlib import Path
+from typing import List, Tuple
 
-class Belief:
-    def __init__(self, label: str, confidence: float):
-        self.label = label
-        self.confidence = confidence
+def load_beliefs(file_path: Path) -> List[dict]:
+    with open(file_path, 'r') as f:
+        return json.load(f)
 
-    def __str__(self) -> str:
-        return f"{self.label} ({self.confidence:.2f})"
-
-def load_beliefs(file_path: str) -> List[Belief]:
-    with open(file_path, "r") as f:
-        beliefs = json.load(f)
-    return [Belief(label=b["label"], confidence=b["confidence"]) for b in beliefs]
-
-def find_conflicts(beliefs: List[Belief]) -> List[Tuple[Belief, Belief]]:
+def belief_conflicts(confidences: List[Tuple[str, float]]) -> List[Tuple[str, str, float]]:
     conflicts = []
-    for i, b1 in enumerate(beliefs):
-        for j, b2 in enumerate(beliefs[i+1:]):
-            if abs(b1.confidence - b2.confidence) < 0.1 and b1.label != b2.label:
-                conflicts.append((b1, b2))
+    for i, (belief1, c1) in enumerate(confidences):
+        for belief2, c2 in confidences[i+1:]:
+            if c1 > 0.7 and c2 > 0.7 and belief1 != belief2 and not belief1 == belief2:
+                conflicts.append((belief1, belief2, (c1 + c2) / 2))
     return conflicts
 
-def resolve_conflict(b1: Belief, b2: Belief) -> Belief:
-    return Belief(label=f"{b1.label} and {b2.label}", confidence=(b1.confidence + b2.confidence) / 2)
-
 def main():
-    beliefs_file = "beliefs.json"
+    beliefs_file = Path('beliefs.json')
     beliefs = load_beliefs(beliefs_file)
-    conflicts = find_conflicts(beliefs)
-    if conflicts:
-        print("Conflicts found:")
-        for c in conflicts:
-            print(f"{c[0]} and {c[1]}")
-        new_belief = resolve_conflict
+
+    confidences = [(belief, float(confidence)) for belief, confidence in beliefs.items()]
+    conflicts = belief_conflicts(confidences)
+
+    print(json.dumps(conflicts, indent=2))
+
+if __name__ == '__main__':
+    main()
