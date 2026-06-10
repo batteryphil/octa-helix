@@ -127,7 +127,8 @@ class PulseLoop:
 
         # State
         self._state = "RESTING"
-        self._pulse_count = 0
+        # Load persisted pulse count so it's continuous across restarts
+        self._pulse_count = self._load_pulse_count()
         self._previous_thoughts = ""
         self._last_event_time = 0
 
@@ -584,6 +585,26 @@ class PulseLoop:
                 "Compression produced no savings — skipping replacement"
             )
 
+    # ── Pulse Count Persistence ───────────────────────────────────────
+
+    def _load_pulse_count(self) -> int:
+        """Load lifetime pulse count from disk. Returns 0 if not found."""
+        try:
+            p = Path("data/pulse_count.txt")
+            if p.exists():
+                return int(p.read_text().strip())
+        except Exception:
+            pass
+        return 0
+
+    def _save_pulse_count(self):
+        """Persist lifetime pulse count to disk on every pulse."""
+        try:
+            Path("data").mkdir(exist_ok=True)
+            Path("data/pulse_count.txt").write_text(str(self._pulse_count))
+        except Exception:
+            pass
+
     # ── The Pulse ────────────────────────────────────────────────────
 
     def _pulse(self):
@@ -599,8 +620,9 @@ class PulseLoop:
         """
         # Clear interrupt at start of each pulse
         self._user_interrupt.clear()
-        
+
         self._pulse_count += 1
+        self._save_pulse_count()  # persist across restarts
         timestamp = datetime.now().strftime("%H:%M:%S")
 
         # 0. Snapshot sentinel state BEFORE the pulse fires.
