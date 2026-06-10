@@ -1,29 +1,25 @@
 import os
 import json
 import pathlib
-import subprocess
+import importlib
 import sys
 
-def check_tool_health(tool_name, tool_module):
+def check_tool_health(tool_name):
     try:
-        tool = __import__(tool_name)
-        result = tool.check_health()
-        return result
+        module = importlib.import_module(f'tools.{tool_name}')
+        if hasattr(module, 'health_check'):
+            result = module.health_check()
+            return {'tool': tool_name, 'healthy': True, 'result': result}
+        else:
+            return {'tool': tool_name, 'healthy': False, 'reason': 'No health_check function found'}
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {'tool': tool_name, 'healthy': False, 'reason': str(e)}
 
 def main():
-    tools_dir = pathlib.Path(__file__).parent / "tools"
-    tool_health_results = {}
+    tools_dir = pathlib.Path(__file__).parent / 'tools'
+    tools = [f'{tool}.py' for tool in os.listdir(tools_dir) if tool.endswith('.py') and tool != 'tool_health_check.py']
+    results = [check_tool_health(tool.split('.')[0]) for tool in tools]
+    json.dump(results, open('tool_health_results.json', 'w'), indent=2)
 
-    for tool_name in os.listdir(tools_dir):
-        if tool_name.endswith(".py") and tool_name != "tool_health_check.py":
-            tool_path = tools_dir / tool_name
-            tool_module = tool_name[:-3]
-            health_result = check_tool_health(tool_module, tool_path)
-            tool_health_results[tool_module] = health_result
-
-    print(json.dumps(tool_health_results, indent=2))
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
