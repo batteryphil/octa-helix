@@ -534,8 +534,15 @@ class CuriosityEngine:
             )
 
             import torch
+            from llm.providers.hermes_tool_provider import _generation_lock
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+            # Skip follow-up if main loop is already generating — don't queue up
+            # behind it. send_message() handles its own locking internally.
+            if _generation_lock.locked():
+                logger.debug("[CURIOSITY] Generation busy — skipping follow-up question")
+                return None
 
             raw = session.send_message(prompt, budget=60, is_autonomous=True)
             followup = raw.strip().strip('"').strip("'").strip()
