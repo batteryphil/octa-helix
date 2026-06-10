@@ -116,32 +116,64 @@ def register_hook(hook: PostPulseHook, name: str = ""):
     logger.info("Post-pulse hook registered: %s", display_name)
 
 
+
+# Persistent hook worker — one long-lived daemon thread processes all pulses
+# sequentially from a queue. Avoids spawning 90+ dead threads over a long run.
+import queue as _queue
+_hook_queue: _queue.Queue = _queue.Queue(maxsize=4)  # max 4 queued pulses, then drop oldest
+_hook_worker_started = False
+
+
+def _ensure_hook_worker():
+    """Start the persistent hook worker thread once."""
+    global _hook_worker_started
+    if _hook_worker_started:
+        return
+
+    def _worker():
+        while True:
+            try:
+                ctx, hooks = _hook_queue.get(timeout=60)
+                for hook, name in hooks:
+                    try:
+                        hook(ctx)
+                    except Exception as e:
+                        logger.warning("Post-pulse hook '%s' failed: %s", name, e, exc_info=True)
+                _hook_queue.task_done()
+            except _queue.Empty:
+                continue  # stay alive
+            except Exception as e:
+                logger.warning("Hook worker error: %s", e)
+
+    t = threading.Thread(target=_worker, daemon=True, name="hook-worker")
+    t.start()
+    _hook_worker_started = True
+
+
 def run_hooks(context: PostPulseHookContext):
-    """Run all registered hooks in a background thread (non-blocking).
+    """Queue this pulse's hooks to run in the persistent hook worker thread.
 
-    Launches the hook chain in a daemon thread and returns immediately,
-    so the pulse loop proceeds to its sleep interval without waiting ~5s
-    for belief detector, co-occurrence, governor, etc. to complete.
-
-    Hooks from pulse N finish during pulse N's sleep window (10-30s),
-    well before pulse N+1 fires. Each hook failure is isolated.
+    Non-blocking: returns immediately. Hooks run sequentially in a single
+    long-lived daemon thread — no per-pulse thread spawning.
+    If the queue is full (4 pending), the oldest is dropped and this one queued.
     """
     with _lock:
         hooks = list(zip(_hooks, _hook_names))
 
-    def _run():
-        for hook, name in hooks:
-            try:
-                hook(context)
-            except Exception as e:
-                logger.warning(
-                    "Post-pulse hook '%s' failed: %s", name, e,
-                    exc_info=True,
-                )
-
-    threading.Thread(
-        target=_run, daemon=True, name=f"hooks-p{context.pulse_count}"
-    ).start()
+    _ensure_hook_worker()
+    try:
+        _hook_queue.put_nowait((context, hooks))
+    except _queue.Full:
+        # Queue full — drop oldest, add newest
+        try:
+            _hook_queue.get_nowait()
+            _hook_queue.task_done()
+        except _queue.Empty:
+            pass
+        try:
+            _hook_queue.put_nowait((context, hooks))
+        except _queue.Full:
+            pass
 
 
 def run_hooks_sync(context: PostPulseHookContext):

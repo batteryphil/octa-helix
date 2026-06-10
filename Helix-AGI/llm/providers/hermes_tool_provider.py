@@ -328,7 +328,7 @@ class HermesToolSession:
             re.search(r'They said:|User message:|User:', message, re.IGNORECASE)
             or re.search(r'["\u201c].{10,}["\u201d]', message)
         )
-        token_budget = 80 if is_autonomous_pulse else 800   # was 512 — raised for richer responses
+        token_budget = 80 if is_autonomous_pulse else 512   # 800 caused OOM — RTX 3060 fits 512 cleanly
 
         logger.warning(f"HERMES send_message: is_autonomous={is_autonomous_pulse}, budget={token_budget}, user_text={user_text[:60]!r}")
 
