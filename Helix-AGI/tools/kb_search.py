@@ -1,45 +1,32 @@
 import json
-import requests
-from bs4 import BeautifulSoup
+import jsonlines
 import re
-import json
-import os
+import sys
+from pathlib import Path
 
-class KnowledgeBaseSearch:
-    def __init__(self, url):
-        self.url = url
-        self.entries = self.fetch_entries()
+def load_knowledge_base():
+    file_path = Path(__file__).parent / "curiosity_knowledge.jsonl"
+    with file_path.open() as file:
+        return list(jsonlines.Reader(file))
 
-    def fetch_entries(self):
-        response = requests.get(self.url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        entries = soup.find_all('div', class_='entry')
-        return [entry.text.strip() for entry in entries]
+def search_insights(keyword, knowledge_base):
+    def relevance_score(insight):
+        return re.search(keyword.lower(), insight['title'].lower()) is not None
 
-    def fuzzy_match(self, query, entries):
-        query = re.sub(r'\W+', ' ', query).strip().lower()
-        matched_entries = []
-        for entry in entries:
-            entry = re.sub(r'\W+', ' ', entry).strip().lower()
-            score = sum(c == q for c, q in zip(entry, query)) / len(query)
-            if score > 0.5:
-                matched_entries.append((entry, score))
-        return matched_entries
+    return sorted(filter(relevance_score, knowledge_base), reverse=True)[:3]
 
-    def semantic_analysis(self, query, entries):
-        query_words = set(query.split())
-        relevant_entries = []
-        for entry, score in self.fuzzy_match(query, entries):
-            entry_words = set(entry.split())
-            intersection = query_words & entry_words
-            if intersection:
-                relevance = len(intersection) / (len(query_words) + len(entry_words))
-                relevant_entries.append((entry, score, relevance))
-        return relevant_entries
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python kb_search.py <keyword>")
+        return
+    
+    keyword = sys.argv[1]
+    knowledge_base = load_knowledge_base()
+    relevant_insights = search_insights(keyword, knowledge_base)
+    
+    print(f"Top 3 relevant insights for '{keyword}':")
+    for i, insight in enumerate(relevant_insights, 1):
+        print(f"{i}. {insight['title']} - {insight['summary']}")
 
-    def rank_entries(self, entries):
-        return sorted(entries, key=lambda x: (-x[1], -x[2]), reverse=True)
-
-    def search(self, query):
-        matched_entries = self.fuzzy_match(query, self.entries)
-        relevant_entries = self.semantic_analysis
+if __name__ == "__main__":
+    main()
