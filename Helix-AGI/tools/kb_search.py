@@ -1,29 +1,25 @@
 import json
 import jsonlines
-import sys
+import re
 from pathlib import Path
 
-def search_knowledge(query):
+def search_curiosity_knowledge(query):
     with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
-        knowledge = [entry for entry in f]
-    
-    # Tokenize the query
-    tokens = query.lower().split()
-    
-    # Calculate cosine similarity between query and each knowledge entry
-    scores = []
-    for entry in knowledge:
-        entry_tokens = entry['text'].lower().split()
-        score = sum(1 for token in tokens if token in entry_tokens)
-        scores.append((entry, score))
-    
-    # Sort by score
-    scores.sort(key=lambda x: x[1], reverse=True)
-    
-    # Return top 3 results
-    return [entry for entry, _ in scores[:3]]
+        results = []
+        for line in f:
+            entry = json.loads(line)
+            if query.lower() in entry['query_keywords'].lower() or query.lower() in entry['title'].lower():
+                results.append(entry)
+                if len(results) >= 3:
+                    break
+        return results
+
+def main():
+    query = input("Enter a search query: ")
+    results = search_curiosity_knowledge(query)
+    print(f"Top 3 relevant results for '{query}':")
+    for i, result in enumerate(results, start=1):
+        print(f"{i}. {result['title']} - {result['description']}")
 
 if __name__ == '__main__':
-    query = ' '.join(sys.argv[1:])
-    results = search_knowledge(query)
-    print(json.dumps(results, indent=2))
+    main()
