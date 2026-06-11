@@ -255,7 +255,22 @@ class SelfTrainer:
             self._training_active = False
 
     def _run_lora_training(self):
-        """Execute the actual LoRA fine-tuning."""
+        """Execute the actual LoRA fine-tuning.
+
+        VRAM Protocol (RTX 3060, 12 GB):
+          Inference model alone: ~4.8 GB
+          Training model + LoRA grads: ~7.2 GB
+          Both simultaneously: ~12 GB → guaranteed OOM
+
+          Steps:
+            1. VRAM_LOCK.clear() → blocks send_message()
+            2. unload_engine()   → frees ~4.8 GB
+            3. Load training model (~7.2 GB, fits in freed space)
+            4. Train 100 steps
+            5. del training model + torch.cuda.empty_cache()
+            6. reload_engine()   → inference model back
+            7. VRAM_LOCK.set()   → send_message() unblocks
+        """
         examples = self._load_high_quality_examples(n=200)
         if len(examples) < 10:
             logger.info(f"[trainer] Only {len(examples)} high-quality examples — need 10+, skipping")
@@ -263,15 +278,25 @@ class SelfTrainer:
 
         logger.info(f"[trainer] Training on {len(examples)} examples for {TRAIN_STEPS} steps")
 
+        # ── Step 1–2: acquire VRAM and unload inference model ────────────────
+        try:
+            from llm.providers.hermes_tool_provider import (
+                VRAM_LOCK, unload_engine, reload_engine, MODEL_ID, HF_CACHE
+            )
+        except ImportError as _ie:
+            logger.error(f"[trainer] Cannot import VRAM utilities: {_ie} — aborting")
+            return
+
+        VRAM_LOCK.clear()   # block send_message() immediately
+        unload_engine()     # free ~4.8 GB from inference model
+
+        training_model = None
         try:
             from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
             from peft import LoraConfig, get_peft_model, TaskType
             import torch
             from torch.optim import AdamW
             from pathlib import Path
-
-            # Import the shared Hermes model components
-            from llm.providers.hermes_tool_provider import MODEL_ID, HF_CACHE
 
             # Build training pairs: (prompt, ideal_response)
             training_pairs = []
@@ -293,33 +318,35 @@ class SelfTrainer:
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
 
-            model = AutoModelForCausalLM.from_pretrained(
+            # ── Step 3: Load training model (inference already unloaded) ────
+            training_model = AutoModelForCausalLM.from_pretrained(
                 MODEL_ID, cache_dir=HF_CACHE,
                 quantization_config=bnb_cfg, device_map="auto"
             )
-            model.train()
+            training_model.train()
 
             lora_cfg = LoraConfig(
                 task_type=TaskType.CAUSAL_LM,
                 r=8, lora_alpha=16, lora_dropout=0.05,
                 target_modules=["q_proj", "v_proj"],
             )
-            model = get_peft_model(model, lora_cfg)
+            training_model = get_peft_model(training_model, lora_cfg)
 
-            optimizer = AdamW(model.parameters(), lr=2e-4)
+            optimizer = AdamW(training_model.parameters(), lr=2e-4)
 
             adapter_path = self._adapter_dir / f"adapter_{int(time.time())}"
             adapter_path.mkdir(parents=True, exist_ok=True)
 
+            # ── Step 4: Training loop ────────────────────────────────────────
             step = 0
             for _ in range(TRAIN_STEPS):
                 pair = training_pairs[step % len(training_pairs)]
                 text = f"{pair[0]}\n{pair[1]}{tokenizer.eos_token}"
                 ids = tokenizer(text, return_tensors="pt", truncation=True,
                                 max_length=512).input_ids
-                ids = ids.to(next(model.parameters()).device)
+                ids = ids.to(next(training_model.parameters()).device)
 
-                outputs = model(ids, labels=ids)
+                outputs = training_model(ids, labels=ids)
                 loss = outputs.loss
                 loss.backward()
                 optimizer.step()
@@ -330,7 +357,7 @@ class SelfTrainer:
                     logger.info(f"[trainer] Step {step}/{TRAIN_STEPS} loss={loss.item():.4f}")
 
             # Save adapter
-            model.save_pretrained(str(adapter_path))
+            training_model.save_pretrained(str(adapter_path))
             tokenizer.save_pretrained(str(adapter_path))
             logger.info(f"[trainer] Adapter saved to {adapter_path}")
 
@@ -346,15 +373,29 @@ class SelfTrainer:
             except Exception:
                 pass
 
-            # Clean up to free VRAM
-            del model
+            # ── Step 5: Free training model VRAM ────────────────────────────
+            del training_model
+            training_model = None
             torch.cuda.empty_cache()
-            logger.info("[trainer] Training complete — VRAM released")
+            import gc; gc.collect()
+            logger.info("[trainer] Training model unloaded — VRAM freed")
 
         except ImportError as e:
             logger.warning(f"[trainer] peft not available: {e}")
         except Exception as e:
             logger.error(f"[trainer] Training failed: {e}", exc_info=True)
+        finally:
+            # ── Steps 6–7: Always reload inference model and release lock ───
+            # Even if training crashed, Helix must be able to think again.
+            try:
+                if training_model is not None:
+                    del training_model
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+            reload_engine()   # loads inference model back into VRAM
+            VRAM_LOCK.set()   # unblocks send_message() — pulses resume
+            logger.info("[trainer] Training window closed — inference resumed")
 
     def get_stats(self) -> dict:
         return {

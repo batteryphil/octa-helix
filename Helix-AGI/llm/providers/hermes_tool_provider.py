@@ -60,6 +60,22 @@ _model     = None
 _tokenizer = None
 _device    = None
 
+# ── VRAM lock — set (True) = inference OK, cleared = training in progress ─────
+# Training and inference CANNOT share the 12 GB RTX 3060 simultaneously:
+#   Inference model (4-bit NF4 8B):  ~4.8 GB
+#   Training model (4-bit + grads):  ~7.2 GB
+#   Both together:                  ~12.0 GB → guaranteed OOM
+#
+# Protocol:
+#   1. Trainer calls unload_engine()  → _model=None, VRAM freed
+#   2. Trainer sets VRAM_LOCK.clear() → send_message() blocks
+#   3. Trainer runs LoRA training
+#   4. Trainer calls reload_engine()  → model back in VRAM
+#   5. Trainer sets VRAM_LOCK.set()   → send_message() unblocks
+import threading as _threading
+VRAM_LOCK = _threading.Event()
+VRAM_LOCK.set()  # starts in "inference OK" state
+
 def _load_engine():
     """Load Hermes-3-Llama-3.1-8B in 4-bit NF4. Singleton — safe to call multiple times."""
     global _model, _tokenizer, _device
@@ -102,6 +118,39 @@ def _load_engine():
         logger.info(f"[neural_probe] {n_hooked} layers hooked for brain visualization")
     except Exception as _probe_err:
         logger.warning(f"[neural_probe] hook failed (non-fatal): {_probe_err}")
+
+
+def unload_engine():
+    """Unload the inference model from VRAM to make room for LoRA training.
+    Caller MUST call VRAM_LOCK.clear() BEFORE this so send_message() blocks.
+    """
+    global _model, _tokenizer, _device
+    if _model is None:
+        return
+    logger.info("[vram] Unloading inference model for LoRA training window...")
+    try:
+        _model.cpu()
+    except Exception:
+        pass
+    del _model
+    _model = None
+    _device = None
+    try:
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+    except Exception:
+        pass
+    logger.info("[vram] Inference model unloaded — GPU memory freed")
+
+
+def reload_engine():
+    """Reload the inference model after LoRA training completes.
+    Caller MUST call VRAM_LOCK.set() AFTER this returns so pulses resume.
+    """
+    logger.info("[vram] Reloading inference model after training...")
+    _load_engine()
+    logger.info("[vram] Inference model reloaded — pulses resuming")
 
 
 def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
@@ -359,6 +408,12 @@ class HermesToolSession:
 
     def send_message(self, message: str) -> str:
         """Send a message; execute tools if needed; return final prose response."""
+        # Block if LoRA training is consuming VRAM (VRAM_LOCK cleared by trainer).
+        # Timeout 600s max — if training hangs, pulse loop resumes anyway.
+        if not VRAM_LOCK.is_set():
+            logger.info("[vram] Waiting for training to finish before inference...")
+            VRAM_LOCK.wait(timeout=600)
+
         # Extract clean user text (strip autonomous pulse telemetry)
         user_text = re.sub(r'<[^>]{1,40}>[^<]{0,500}</[^>]{1,40}>', '', message).strip()
         if not user_text:
