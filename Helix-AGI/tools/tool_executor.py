@@ -398,7 +398,9 @@ class ToolExecutor:
         if cmd_lower.startswith("sudo"):
             return "sudo commands are not allowed."
         cwd = args.get("cwd", "")
-        cwd = cwd if cwd and os.path.isdir(cwd) else os.path.expanduser("~")
+        # Default to Helix project root — NOT ~/ which is wrong for all relative paths
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cwd = cwd if cwd and os.path.isdir(cwd) else _project_root
         try:
             result = subprocess.run(
                 command, shell=True, capture_output=True, text=True,

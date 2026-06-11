@@ -122,6 +122,29 @@ def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
         except json.JSONDecodeError:
             logger.warning(f"JSON tool_call parse failed: {m[:60]}")
 
+    # ── Format 1b: Partial/truncated <tool_call> (no closing tag) ────────────
+    # When EOS fires before </tool_call>, try to recover the partial JSON.
+    if not calls and '<tool_call>' in text and '</tool_call>' not in text:
+        tail = text[text.index('<tool_call>') + len('<tool_call>'):].strip()
+        for stop in ['<|im_end|>', '\n\n']:
+            if stop in tail:
+                tail = tail[:tail.index(stop)].strip()
+                break
+        # Close open strings and braces
+        if tail.count('"') % 2 == 1:
+            tail += '"'
+        opens = tail.count('{') - tail.count('}')
+        tail += '}' * max(0, opens)
+        try:
+            obj = json.loads(tail)
+            if 'name' in obj:
+                if isinstance(obj.get("arguments"), str):
+                    obj["arguments"] = json.loads(obj["arguments"])
+                calls.append(obj)
+                logger.warning(f"[parser] Recovered partial tool_call: {obj.get('name')}")
+        except json.JSONDecodeError:
+            pass
+
     # ── Format 2: Bracket action tags ────────────────────────────────────────
     # [SEARCH <query>]
     for m in re.finditer(r'\[SEARCH\s+(?:web\s+for\s+)?(.+?)\]', text, re.IGNORECASE):
@@ -409,22 +432,26 @@ class HermesToolSession:
                 # first generated token MUST be part of the tool call JSON.
                 # This is standard Hermes-3 assistant prefilling.
                 _prefill_str = ""  # track for raw reconstruction
-                if is_mandate_pulse and loop_i == 0:
-                    # Pick the most contextually relevant tool to seed with
-                    if openai_tools:
-                        tool_names = [t['function']['name'] for t in openai_tools
-                                      if isinstance(t, dict) and 'function' in t]
+                if is_mandate_pulse and loop_i == 0 and is_autonomous_pulse:
+                    # Always seed with 'search' — it's the most reliable JSON
+                    # completion task: model outputs {"query": "..."}  naturally.
+                    # Other tools (list_notes, note) have no args and the model
+                    # tends to output EOS immediately after 'arguments': .
+                    if openai_tools and any(
+                        t.get('function',{}).get('name') == 'search'
+                        for t in openai_tools
+                    ):
+                        seed_tool = 'search'
+                    elif openai_tools:
+                        # Fallback: pick any tool that takes a string argument
                         import random as _rand
-                        # Prefer search/system tools for mandate pulses
-                        preferred = [n for n in tool_names if any(
-                            k in n.lower() for k in
-                            ['search','health','belief','note','metric','system']
-                        )]
-                        seed_tool = _rand.choice(preferred) if preferred else (_rand.choice(tool_names) if tool_names else 'search')
+                        stringy = [t['function']['name'] for t in openai_tools
+                                   if 'query' in str(t.get('function',{}).get('parameters',{}))]
+                        seed_tool = _rand.choice(stringy) if stringy else openai_tools[0]['function']['name']
                     else:
                         seed_tool = 'search'
-                    # Append partial tool call to prime generation
-                    _prefill_str = f'<tool_call>\n{{"name": "{seed_tool}", "arguments": '
+                    # Append partial tool call — model completes the query string
+                    _prefill_str = f'<tool_call>\n{{"name": "{seed_tool}", "arguments": {{"query": "'
                     prompt = prompt + _prefill_str
                     logger.warning(f"[hermes] Mandate prefill: seeding with tool='{seed_tool}'")
 
@@ -436,8 +463,12 @@ class HermesToolSession:
                     out = self._model.generate(
                         input_ids,
                         max_new_tokens=token_budget,
-                        do_sample=(not is_autonomous_pulse),
-                        temperature=self.temperature,
+                        # Mandate pulses: use sampling (temp=0.4) so EOS doesn't
+                        # win greedily after prefill, allowing JSON to complete.
+                        # Non-mandate autonomous: greedy (deterministic thought).
+                        # User pulses: sampling (temp=self.temperature).
+                        do_sample=(True if is_mandate_pulse else not is_autonomous_pulse),
+                        temperature=(0.4 if is_mandate_pulse else self.temperature),
                         pad_token_id=self._tokenizer.eos_token_id,
                     )
                 # ── Flush neural probe snapshot after generate ─────────────

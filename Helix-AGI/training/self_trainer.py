@@ -162,8 +162,10 @@ class SelfTrainer:
                 f"(tool={tool_success} belief={novel_belief} gain={significant_gain})"
             )
 
-            # Flush buffer to disk every 10 tuples (fewer, higher quality)
-            if len(self._buffer) >= 10:
+            # Flush buffer to disk immediately (was: every 10 tuples)
+            # With only a few accepted tuples per session, threshold=10
+            # meant the buffer was never flushed and data lost on restart.
+            if len(self._buffer) >= 1:
                 self._flush_buffer()
 
             # Check if we have enough for training
