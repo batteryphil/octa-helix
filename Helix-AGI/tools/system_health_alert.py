@@ -2,24 +2,20 @@ import psutil
 import json
 import os
 
-def system_health():
+def check_system_health():
     cpu_usage = psutil.cpu_percent()
-    vram_usage = psutil.virtual_memory().total - psutil.virtual_memory().available
-    status = 'ok'
+    vram_usage = psutil.virtual_memory().used / (1024 * 1024 * 1024)
     
     if cpu_usage > 80:
-        status = 'cpu_high'
-    if vram_usage > 10 * 1024 * 1024 * 1024:  # 10 GB
-        status = 'vram_high'
-    
-    return {'status': status, 'cpu_usage': cpu_usage, 'vram_usage': vram_usage}
+        return "CPU usage exceeded 80%: {:.2f}%".format(cpu_usage)
+    elif vram_usage > 10:
+        return "VRAM usage exceeded 10GB: {:.2f}GB".format(vram_usage)
+    else:
+        return "ok"
 
-def log_alert(status, cpu_usage, vram_usage):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    log_entry = f"{timestamp} - Status: {status}, CPU: {cpu_usage}%, VRAM: {vram_usage / (1024 * 1024 * 1024):.2f} GB\n"
-    with open('system_health_log.txt', 'a') as f:
-        f.write(log_entry)
+def main():
+    health_status = check_system_health()
+    print(json.dumps({"status": health_status}))
 
-if __name__ == '__main__':
-    print(json.dumps(system_health()))
-    log_alert(*system_health().values())
+if __name__ == "__main__":
+    main()
