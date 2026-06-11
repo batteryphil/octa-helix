@@ -1,18 +1,39 @@
 import json
+import requests
+from bs4 import BeautifulSoup
 import re
-from pathlib import Path
-from typing import List, Dict
+import pathlib
 
-def validate_data(data: List[Dict], schema: Dict) -> Dict:
-    errors = []
-    for item in data:
-        for key, value in item.items():
-            if key not in schema:
-                errors.append(f"Key '{key}' not found in schema")
-            if isinstance(schema[key], str) and not isinstance(value, str):
-                errors.append(f"Key '{key}' should be a string, got {type(value)}")
-            if isinstance(schema[key], int) and not isinstance(value, int):
-                errors.append(f"Key '{key}' should be an integer, got {type(value)}")
-            if isinstance(schema[key], bool) and value not in [True, False]:
-                errors.append(f"Key '{key}' should be a boolean, got {value}")
-    return {"errors": errors}
+def validate_data(data_source, knowledge_base_url):
+    response = requests.get(knowledge_base_url)
+    knowledge_base = json.loads(response.text)
+
+    for item in data_source:
+        if item['name'] in knowledge_base:
+            if item['value'] == knowledge_base[item['name']]:
+                item['valid'] = True
+            else:
+                item['valid'] = False
+                item['discrepancy'] = f"Discrepancy found: {knowledge_base[item['name']]}"
+        else:
+            item['valid'] = False
+            item['discrepancy'] = "Item not found in knowledge base"
+
+    return data_source
+
+def main():
+    data_source = [
+        {"name": "population", "value": "33000000"},
+        {"name": "capital", "value": "New York"},
+        {"name": "language", "value": "English"}
+    ]
+
+    knowledge_base_url = "https://example.com/knowledge_base.json"
+
+    validated_data = validate_data(data_source, knowledge_base_url)
+
+    for item in validated_data:
+        print(f"{item['name']}: {'Valid' if item['valid'] else 'Invalid'} - {item['discrepancy']}")
+
+if __name__ == '__main__':
+    main()
