@@ -1,39 +1,43 @@
 import json
-import sys
 import os
+import sys
+import requests
+from bs4 import BeautifulSoup
+from pathlib import Path
 
-class BeliefConflictResolver:
-    def __init__(self, belief_store):
-        self.belief_store = belief_store
+def resolve_conflict(belief1, belief2):
+    # Placeholder function to resolve belief conflicts
+    # Implement your resolution logic here
+    return "Resolved"
 
-    def find_conflicts(self):
-        conflicts = []
-        beliefs = list(self.belief_store.items())
-        for i in range(len(beliefs)):
-            for j in range(i+1, len(beliefs)):
-                if beliefs[i].confidence > 0.7 and beliefs[j].confidence > 0.7:
-                    if self._are_conflicting(beliefs[i], beliefs[j]):
-                        conflicts.append((beliefs[i], beliefs[j]))
-        return conflicts
+def load_beliefs():
+    beliefs = {}
+    for file in Path("beliefs").glob("*.json"):
+        with file.open() as f:
+            beliefs.update(json.load(f))
+    return beliefs
 
-    def _are_conflicting(self, belief1, belief2):
-        if belief1.topic == belief2.topic and belief1.aspect == belief2.aspect:
-            return True
-        return False
-
-    def resolve_conflict(self, conflict):
-        print(f"Conflict found: {conflict[0]} vs {conflict[1]}")
-        choice = input("Choose which belief to update (0 or 1): ")
-        if choice == '0':
-            self.belief_store.update_confidence(conflict[0].topic, conflict[0].aspect, conflict[0].confidence * 0.9)
-        elif choice == '1':
-            self.belief_store.update_confidence(conflict[1].topic, conflict[1].aspect, conflict[1].confidence * 0.9)
-        else:
-            print("Invalid choice")
+def save_beliefs(beliefs):
+    for belief_id, belief in beliefs.items():
+        with open(f"beliefs/{belief_id}.json", "w") as f:
+            json.dump(belief, f)
 
 def main():
-    with open('belief_store.json', 'r') as f:
-        belief_store = json.load(f)
+    beliefs = load_beliefs()
+    resolved_beliefs = {}
+    
+    for belief_id, belief in beliefs.items():
+        for other_belief_id, other_belief in beliefs.items():
+            if belief_id != other_belief_id and belief["confidence"] > 0.8 and other_belief["confidence"] > 0.8:
+                resolution = resolve_conflict(belief, other_beliefs[other_belief_id])
+                if resolution != "Resolved":
+                    resolved_beliefs[belief_id] = belief
+                    resolved_beliefs[other_belief_id] = other_belief
+                    resolved_beliefs[belief_id]["resolution"] = resolution
+                    resolved_beliefs[other_belief_id]["resolution"] = resolution
+                    break
+    
+    save_beliefs(resolved_beliefs)
 
-    resolver = BeliefConflictResolver(belief_store)
-    conflicts = resolver.find
+if __name__ == "__main__":
+    main()
