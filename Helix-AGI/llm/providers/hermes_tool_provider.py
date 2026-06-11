@@ -499,7 +499,11 @@ class HermesToolSession:
             logger.warning(f"HERMES CALLS[{loop_i}]={tool_calls}")
 
             if tool_calls and self._executor:
-                messages.append({"role": "assistant", "content": raw})
+                # Store the FULL reconstructed tool call (raw_for_parse), not
+                # just the partial model output (raw). When prefill is active,
+                # raw is only the completion fragment; raw_for_parse has the
+                # complete <tool_call>...</tool_call> content for history.
+                messages.append({"role": "assistant", "content": raw_for_parse})
                 for call in tool_calls:
                     name = call.get("name", "")
                     args = call.get("arguments", {})

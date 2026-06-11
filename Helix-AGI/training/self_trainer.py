@@ -119,7 +119,10 @@ class SelfTrainer:
 
             # ── Criterion 3: fitness delta (from SIE context if available) ─
             fitness_delta = getattr(ctx, "last_fitness_delta", 0.0) or 0.0
-            significant_gain = fitness_delta > 0.05
+            # A successful tool call IS a significant gain over prose-only.
+            # Don't require the snapshot to have already caught up — this creates
+            # a chicken-and-egg: no training data until fitness is already high.
+            significant_gain = tool_success or (fitness_delta > 0.05)
 
             # ── Quality gate: must meet ≥2 of 3 criteria ─────────────────
             criteria_met = sum([tool_success, novel_belief, significant_gain])
@@ -138,7 +141,17 @@ class SelfTrainer:
                 outcome = "fitness_gain"
                 quality = 0.6
 
-            pulse_msg = getattr(ctx, "events", "") or ""
+            # Build the prompt for the tuple.
+            # CRITICAL: events is a List[str] and may be EMPTY for autonomous
+            # mandate pulses (no user activity = no queued events). Empty list
+            # is falsy in Python, so `events or ""` would be "", causing every
+            # autonomous pulse to be silently rejected.
+            # Fix: fall back to the thought itself as the prompt context.
+            raw_events = getattr(ctx, "events", None)
+            if raw_events:  # non-empty list
+                pulse_msg = "\n".join(str(e) for e in raw_events)
+            else:           # empty list or None — use thought as context
+                pulse_msg = thought[:300]
             if not pulse_msg:
                 return
 
