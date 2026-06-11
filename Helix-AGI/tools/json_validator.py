@@ -1,16 +1,18 @@
 import json
-from json import JSONDecodeError
+import sys
 
 def validate_json(json_string):
     try:
         json.loads(json_string)
         return 'valid'
-    except JSONDecodeError as e:
+    except json.JSONDecodeError as e:
         return 'invalid', str(e)
 
 if __name__ == '__main__':
-    json_string = '{"name": "John", "age": 30, "city": "New York"}'
-    print(validate_json(json_string))  # Output: valid
+    if len(sys.argv) != 2:
+        print('Usage: python json_validator.py <json_string>')
+        sys.exit(1)
 
-    json_string = '{"name": "John", "age": 30, "city": "New York"'
-    print(validate_json(json_string))  # Output: invalid, Expecting ',' delimiter
+    json_string = sys.argv[1]
+    result = validate_json(json_string)
+    print(result)
