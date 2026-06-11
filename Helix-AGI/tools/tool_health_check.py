@@ -1,27 +1,23 @@
 import os
 import json
 import pathlib
-import subprocess
+import importlib
+import sys
 
-def check_tool_health(tool_name, tool_module):
+def check_tool_health(tool_name):
     try:
-        import importlib
-        importlib.import_module(f'tools.{tool_name}')
-        result = tool_module.check_health()
-        return result
+        module = importlib.import_module(f'tools.{tool_name}')
+        module.check_health()
+        return {'name': tool_name, 'status': 'healthy'}
     except Exception as e:
-        return str(e)
+        return {'name': tool_name, 'status': 'unhealthy', 'error': str(e)}
 
-def log_tool_health():
-    tools = os.listdir('tools')
-    health_log = []
-    for tool in tools:
-        if tool.endswith('.py') and not tool.startswith('_'):
-            tool_name = tool[:-3]
-            tool_module = f'tools.{tool_name}'
-            health = check_tool_health(tool_name, tool_module)
-            health_log.append({ 'tool': tool_name, 'health': health })
-    return json.dumps(health_log, indent=2)
+def main():
+    tools_dir = pathlib.Path('tools')
+    tools = [f.name[:-3] for f in tools_dir.iterdir() if f.is_file() and f.suffix == '.py']
+    
+    results = [check_tool_health(tool) for tool in tools]
+    json.dump(results, sys.stdout, indent=2)
 
 if __name__ == '__main__':
-    print(log_tool_health())
+    main()
