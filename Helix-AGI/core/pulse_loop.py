@@ -857,15 +857,28 @@ class PulseLoop:
                 "formulate a hard question",
                 "search google for the answer",
                 "i should:\n\n*1.",
+                # Block pulse-context echoes (model reproducing its own input):
+                "[pulse ",           # starts with pulse header
+                "<spatial-awareness>",  # spatial context block regurgitated
+                "[recalled context",    # preconscious context echoed
+                "background orientation from",
             ]
-            if not any(p in clean_thought.lower() for p in skip_phrases):
+            # Also block if thought starts with the pulse message header
+            is_input_echo = (
+                clean_thought.startswith("[Pulse ")
+                or clean_thought.startswith("<spatial-awareness>")
+                or len(clean_thought.strip()) < 20
+            )
+            if not is_input_echo and not any(p in clean_thought.lower() for p in skip_phrases):
                 try:
                     from dashboard.dashboard_comms import get_comms
-                    get_comms().push_outbound("User", clean_thought)
+                    get_comms().push_outbound("User", clean_thought, sender="Helix")
                     logger.info(f"[chat] Auto-emitted response to User ({len(clean_thought)} chars)")
                     self._last_user_emit_pulse = self._pulse_count
                 except Exception as _e:
                     logger.debug(f"[chat] Auto-emit failed: {_e}")
+            else:
+                logger.debug(f"[chat] Suppressed input-echo response ({len(clean_thought)} chars)")
 
 
         logger.debug(

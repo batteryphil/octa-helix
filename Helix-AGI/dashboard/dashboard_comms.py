@@ -93,9 +93,10 @@ class DashboardComms:
 
     # ── Outbound (Helix → Browser) ───────────────────────────────────
 
-    def push_outbound(self, recipient: str, message: str):
+    def push_outbound(self, recipient: str, message: str, sender: str = "Helix"):
         """Queue a message from Helix to be displayed in the browser chat."""
         msg = {
+            "sender": sender,
             "recipient": recipient,
             "content": message,
             "timestamp": time.time(),
