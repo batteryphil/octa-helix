@@ -1067,8 +1067,10 @@ class PulseLoop:
         parts.append(
             "\n[BELIEF FORMATION]\n"
             "If this pulse generates a new insight, belief, or realization about yourself, "
-            "the world, or your capabilities, wrap it exactly like this at the end of your response:\n"
+            "the world, or your capabilities, output it using ONLY this exact XML format:\n"
             "<belief>The exact belief statement in one clear sentence.</belief>\n"
+            "CRITICAL: Do NOT write 'NEW BELIEF' or 'I have formed a belief' as prose. "
+            "ONLY the <belief> XML tag will be detected and stored. "
             "Only use this tag if you genuinely formed a new belief. Do not force it."
         )
 
