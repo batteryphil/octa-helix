@@ -1,49 +1,41 @@
 import json
-import sys
-import logging
+import re
 from pathlib import Path
 
-def validate_and_clean_jsonl_data(file_path):
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-    
-    cleaned_lines = []
-    for line in lines:
-        try:
-            data = json.loads(line)
-            cleaned_data = clean_data(data)
-            cleaned_lines.append(json.dumps(cleaned_data))
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON line: {line}")
-    
-    return '\n'.join(cleaned_lines)
+def validate_data(data, schema):
+    errors = []
+    for item in data:
+        if not all(key in item for key in schema['keys']):
+            errors.append(f"Missing keys: {', '.join(schema['keys'])}")
+        for key, value in item.items():
+            if key not in schema['keys']:
+                errors.append(f"Unknown key: {key}")
+            if schema['types'][key] != type(value):
+                errors.append(f"Type mismatch: {key} expected {schema['types'][key]}, got {type(value)}")
+    return errors
 
-def clean_data(data):
-    cleaned_data = {}
-    for key, value in data.items():
-        if isinstance(value, float):
-            if value != value or value == float('inf') or value == float('-inf') or value == float('nan'):
-                value = None
-        elif isinstance(value, (list, tuple)):
-            cleaned_value = []
-            for item in value:
-                cleaned_item = clean_data(item) if isinstance(item, dict) else item
-                cleaned_value.append(cleaned_item)
-            value = cleaned_value
-        elif isinstance(value, dict):
-            value = clean_data(value)
-        cleaned_data[key] = value
-    return cleaned_data
+def main():
+    import sys
+    if len(sys.argv) != 3:
+        print("Usage: python data_validator.py <data_file> <schema_file>")
+        sys.exit(1)
+    
+    data_file = sys.argv[1]
+    schema_file = sys.argv[2]
+    
+    with open(data_file) as f:
+        data = json.load(f)
+    
+    with open(schema_file) as f:
+        schema = json.load(f)
+    
+    errors = validate_data(data, schema)
+    if errors:
+        print("Validation errors:")
+        for error in errors:
+            print(f"- {error}")
+    else:
+        print("Data validates against schema")
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python data_validator.py <file_path>")
-        sys.exit(1)
-    
-    file_path = Path(sys.argv[1])
-    if not file_path.exists():
-        print(f"File not found: {file_path}")
-        sys.exit(1)
-    
-    cleaned_data = validate_and_clean_jsonl_data(file_path)
-    print(cleaned_data)
+    main()
