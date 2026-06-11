@@ -1,33 +1,41 @@
+import json
+import jsonlines
 import requests
-import json
 from bs4 import BeautifulSoup
+import psutil
 import re
-import json
 import pathlib
 
-def fetch_wikipedia(page_title):
-    url = f"https://en.wikipedia.org/wiki/{page_title}"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    content = soup.find("div", {"id": "mw-content-text"})
-    paragraphs = content.find_all("p")
-    return "\n".join([p.text for p in paragraphs])
+def load_knowledge_base():
+    knowledge_base = {}
+    for line in jsonlines.open('curiosity_knowledge.jsonl'):
+        fact = json.loads(line)
+        knowledge_base[fact['id']] = fact
+    return knowledge_base
 
-def fact_checker(statement):
-    statement = statement.lower()
-    statement = re.sub(r"[^a-zA-Z0-9\s]", "", statement)
+def check_fact_consistency(fact, knowledge_base):
+    fact_id = fact['id']
+    related_facts = []
+    for fact_id_related in fact['related_facts']:
+        related_facts.append(knowledge_base[fact_id_related])
     
-    fact = None
-    for word in statement.split():
-        fact = fetch_wikipedia(word)
-        if fact:
-            break
-    
-    if fact:
-        return "verified"
-    else:
-        return "unverified"
+    for related_fact in related_facts:
+        if fact['claim'] == related_fact['claim']:
+            return 'consistent', f"Fact {fact_id} is consistent with related fact {related_fact['id']}."
+        elif fact['claim'] != related_fact['claim']:
+            return 'inconsistent', f"Fact {fact_id} is inconsistent with related fact {related_fact['id']}."
 
-if __name__ == "__main__":
-    statement = "The capital of France is Paris"
-    print(fact_checker(statement))
+    return 'inconsistent', f"Fact {fact_id} is inconsistent with the knowledge base."
+
+def main():
+    fact = {
+        'id': 'fact123',
+        'claim': 'The Earth revolves around the Sun.',
+        'related_facts': ['fact456', 'fact789']
+    }
+    knowledge_base = load_knowledge_base()
+    consistency, explanation = check_fact_consistency(fact, knowledge_base)
+    print(f"Consistency: {consistency}\nExplanation: {explanation}")
+
+if __name__ == '__main__':
+    main()
