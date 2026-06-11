@@ -1,41 +1,31 @@
-import json
-import jsonlines
 import requests
 from bs4 import BeautifulSoup
-import psutil
+import json
 import re
 import pathlib
 
-def load_knowledge_base():
-    knowledge_base = {}
-    for line in jsonlines.open('curiosity_knowledge.jsonl'):
-        fact = json.loads(line)
-        knowledge_base[fact['id']] = fact
-    return knowledge_base
+def fact_check(statement):
+    # Query curated knowledge base (example: Wikipedia)
+    url = "https://en.wikipedia.org/wiki/Main_Page"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    content = soup.find("div", {"id": "mw-content-text"})
 
-def check_fact_consistency(fact, knowledge_base):
-    fact_id = fact['id']
-    related_facts = []
-    for fact_id_related in fact['related_facts']:
-        related_facts.append(knowledge_base[fact_id_related])
-    
-    for related_fact in related_facts:
-        if fact['claim'] == related_fact['claim']:
-            return 'consistent', f"Fact {fact_id} is consistent with related fact {related_fact['id']}."
-        elif fact['claim'] != related_fact['claim']:
-            return 'inconsistent', f"Fact {fact_id} is inconsistent with related fact {related_fact['id']}."
+    # Parse and extract relevant facts
+    facts = []
+    for p in content.find_all("p"):
+        fact = re.sub(r"\s+", " ", p.text.strip()).strip()
+        if fact:
+            facts.append(fact)
 
-    return 'inconsistent', f"Fact {fact_id} is inconsistent with the knowledge base."
+    # Compare statement against facts
+    for fact in facts:
+        if statement.lower() in fact.lower():
+            return "fact-checked"
+        elif any(disputed in fact.lower() for disputed in ["controversy", "disputed", "debate"]):
+            return "fact-checked: disputed"
+    return "fact-checked: unknown"
 
-def main():
-    fact = {
-        'id': 'fact123',
-        'claim': 'The Earth revolves around the Sun.',
-        'related_facts': ['fact456', 'fact789']
-    }
-    knowledge_base = load_knowledge_base()
-    consistency, explanation = check_fact_consistency(fact, knowledge_base)
-    print(f"Consistency: {consistency}\nExplanation: {explanation}")
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    statement = "The capital of France is Paris."
+    print(fact_check(statement))
