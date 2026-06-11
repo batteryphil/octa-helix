@@ -1,25 +1,44 @@
 import json
-import jsonlines
+import requests
+from bs4 import BeautifulSoup
+import psutil
 import re
-from pathlib import Path
+import pathlib
 
-def search_curiosity_knowledge(query):
-    with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
-        results = []
-        for line in f:
-            entry = json.loads(line)
-            if query.lower() in entry['query_keywords'].lower() or query.lower() in entry['title'].lower():
-                results.append(entry)
-                if len(results) >= 3:
-                    break
-        return results
+def search_knowledge(query):
+    # Search the curiosity knowledge database
+    url = f"https://www.example.com/api/search?q={query}"
+    response = requests.get(url)
+    data = json.loads(response.text)
+    
+    # Calculate relevance scores for each result
+    results = []
+    for item in data["results"]:
+        title = item["title"]
+        content = item["content"]
+        score = calculate_similarity(query, title) * 0.7 + calculate_similarity(query, content) * 0.3
+        results.append({"title": title, "content": content, "score": score})
+    
+    # Sort results by relevance score
+    results.sort(key=lambda x: x["score"], reverse=True)
+    
+    # Return top 3 results
+    return results[:3]
+
+def calculate_similarity(query, text):
+    # Calculate similarity between query and text using simple string matching
+    query = query.lower()
+    text = text.lower()
+    words = re.findall(r'\w+', query)
+    score = sum(1 for word in words if word in text)
+    return score / len(words)
 
 def main():
     query = input("Enter a search query: ")
-    results = search_curiosity_knowledge(query)
-    print(f"Top 3 relevant results for '{query}':")
-    for i, result in enumerate(results, start=1):
-        print(f"{i}. {result['title']} - {result['description']}")
+    results = search_knowledge(query)
+    for i, result in enumerate(results, 1):
+        print(f"{i}. {result['title']} - Score: {result['score']}")
+        print(result['content'])
 
 if __name__ == '__main__':
     main()
