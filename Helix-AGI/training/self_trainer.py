@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import List, Optional
 
 logger = logging.getLogger("helix.training.self_trainer")
+logger.setLevel(logging.DEBUG)  # temp: diagnose P1 prompt issue — remove after fix
 
 EXPERIENCE_THRESHOLD = 2000   # tuples before triggering training (~100hrs runtime)
 TRAIN_STEPS = 100            # LoRA steps per training run
@@ -169,6 +170,7 @@ class SelfTrainer:
             if tool_calls and tool_name:
                 args = tool_calls[0].get("arguments", {}) or {}
                 query_val = args.get("query") or args.get("path") or args.get("content", "")[:80]
+                logger.debug(f"[trainer] P1 debug: tool={tool_name!r} args={args!r} query_val={str(query_val)[:60]!r}")
                 if query_val and len(str(query_val).strip()) > 5:
                     pulse_msg = f"[{tool_name}] {str(query_val).strip()}"
 
