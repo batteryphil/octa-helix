@@ -31,6 +31,11 @@ logger = logging.getLogger("helix.training.self_trainer")
 EXPERIENCE_THRESHOLD = 500   # tuples before triggering training
 TRAIN_STEPS = 100            # LoRA steps per training run
 IDLE_REQUIRED = 600          # 10 min idle before training starts
+MIN_TOOL_DIVERSITY = 2       # unique tool types needed before training
+LORA_LR = 5e-5               # conservative LR (was 2e-4 — too aggressive for small sets)
+LORA_DROPOUT = 0.1           # higher dropout for regularization (was 0.05)
+MAX_TRAIN_EPOCHS = 5         # max passes over data regardless of TRAIN_STEPS
+EVAL_LOSS_TOLERANCE = 1.10   # reject adapter if eval loss > baseline * this
 
 
 @dataclass
@@ -278,6 +283,47 @@ class SelfTrainer:
 
         logger.info(f"[trainer] Training on {len(examples)} examples for {TRAIN_STEPS} steps")
 
+        # ── Step 0: Diversity gate ───────────────────────────────────────────
+        # Overfitting risk: if all 500 tuples are search("about AI"), the adapter
+        # learns to always call search on any prompt. Require variety first.
+        import random as _random
+        training_pairs = []
+        tool_types_seen = set()
+        for ex in examples:
+            if ex.outcome == "tool_executed" and ex.tool_name:
+                training_pairs.append((ex.prompt, ex.response))
+                tool_types_seen.add(ex.tool_name)
+
+        if len(tool_types_seen) < MIN_TOOL_DIVERSITY:
+            logger.info(
+                f"[trainer] Diversity gate: only {len(tool_types_seen)} unique tool types "
+                f"(need {MIN_TOOL_DIVERSITY}). Saving examples but skipping training to "
+                f"prevent behavioral collapse onto a single tool pattern."
+            )
+            return
+
+        if not training_pairs:
+            logger.info("[trainer] No valid training pairs — skipping")
+            return
+
+        logger.info(
+            f"[trainer] Diversity OK: {len(tool_types_seen)} tool types — "
+            f"{list(tool_types_seen)}"
+        )
+
+        # ── Step 0b: 80/20 train/eval split ─────────────────────────────────
+        _random.shuffle(training_pairs)
+        n_train = max(1, int(len(training_pairs) * 0.8))
+        train_pairs = training_pairs[:n_train]
+        eval_pairs  = training_pairs[n_train:] or training_pairs[:2]
+
+        # Cap steps: at most MAX_TRAIN_EPOCHS passes over training data
+        actual_steps = min(TRAIN_STEPS, len(train_pairs) * MAX_TRAIN_EPOCHS)
+        logger.info(
+            f"[trainer] {len(train_pairs)} train / {len(eval_pairs)} eval examples, "
+            f"{actual_steps} steps"
+        )
+
         # ── Step 1–2: acquire VRAM and unload inference model ────────────────
         try:
             from llm.providers.hermes_tool_provider import (
@@ -291,23 +337,15 @@ class SelfTrainer:
         unload_engine()     # free ~4.8 GB from inference model
 
         training_model = None
+        adapter_accepted = False
+        adapter_path = None
         try:
             from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
             from peft import LoraConfig, get_peft_model, TaskType
             import torch
             from torch.optim import AdamW
-            from pathlib import Path
-
-            # Build training pairs: (prompt, ideal_response)
-            training_pairs = []
-            for ex in examples:
-                if ex.outcome == "tool_executed" and ex.tool_name:
-                    ideal = f"[write_file] Write result to file" if "write" in ex.tool_name else ex.response
-                    training_pairs.append((ex.prompt, ex.response))
-
-            if not training_pairs:
-                logger.info("[trainer] No valid training pairs — skipping")
-                return
+            from torch.optim.lr_scheduler import CosineAnnealingLR
+            import gc
 
             bnb_cfg = BitsAndBytesConfig(
                 load_in_4bit=True, bnb_4bit_quant_type="nf4",
@@ -318,29 +356,51 @@ class SelfTrainer:
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
 
+            def _compute_eval_loss(mdl, pairs):
+                """Measure average loss on held-out pairs (no grad)."""
+                mdl.eval()
+                total_loss = 0.0
+                with torch.no_grad():
+                    for p, r in pairs:
+                        text = f"{p}\n{r}{tokenizer.eos_token}"
+                        ids = tokenizer(text, return_tensors="pt", truncation=True,
+                                        max_length=512).input_ids
+                        ids = ids.to(next(mdl.parameters()).device)
+                        out = mdl(ids, labels=ids)
+                        total_loss += out.loss.item()
+                mdl.train()
+                return total_loss / len(pairs)
+
             # ── Step 3: Load training model (inference already unloaded) ────
             training_model = AutoModelForCausalLM.from_pretrained(
                 MODEL_ID, cache_dir=HF_CACHE,
                 quantization_config=bnb_cfg, device_map="auto"
             )
-            training_model.train()
 
+            # Baseline eval loss (before any LoRA is applied)
+            logger.info("[trainer] Measuring baseline eval loss...")
+            baseline_eval_loss = _compute_eval_loss(training_model, eval_pairs)
+            logger.info(f"[trainer] Baseline eval loss: {baseline_eval_loss:.4f}")
+
+            training_model.train()
             lora_cfg = LoraConfig(
                 task_type=TaskType.CAUSAL_LM,
-                r=8, lora_alpha=16, lora_dropout=0.05,
+                r=8, lora_alpha=16,
+                lora_dropout=LORA_DROPOUT,   # 0.1 (higher regularization)
                 target_modules=["q_proj", "v_proj"],
             )
             training_model = get_peft_model(training_model, lora_cfg)
 
-            optimizer = AdamW(training_model.parameters(), lr=2e-4)
+            optimizer = AdamW(training_model.parameters(), lr=LORA_LR)  # 5e-5
+            scheduler = CosineAnnealingLR(optimizer, T_max=actual_steps)
 
             adapter_path = self._adapter_dir / f"adapter_{int(time.time())}"
             adapter_path.mkdir(parents=True, exist_ok=True)
 
-            # ── Step 4: Training loop ────────────────────────────────────────
-            step = 0
-            for _ in range(TRAIN_STEPS):
-                pair = training_pairs[step % len(training_pairs)]
+            # ── Step 4: Training loop with gradient clipping ─────────────────
+            best_eval_loss = float('inf')
+            for step_i in range(actual_steps):
+                pair = train_pairs[step_i % len(train_pairs)]
                 text = f"{pair[0]}\n{pair[1]}{tokenizer.eos_token}"
                 ids = tokenizer(text, return_tensors="pt", truncation=True,
                                 max_length=512).input_ids
@@ -349,35 +409,67 @@ class SelfTrainer:
                 outputs = training_model(ids, labels=ids)
                 loss = outputs.loss
                 loss.backward()
+                # Gradient clipping: prevents loss spikes on outlier examples
+                torch.nn.utils.clip_grad_norm_(training_model.parameters(), max_norm=1.0)
                 optimizer.step()
+                scheduler.step()
                 optimizer.zero_grad()
-                step += 1
 
-                if step % 25 == 0:
-                    logger.info(f"[trainer] Step {step}/{TRAIN_STEPS} loss={loss.item():.4f}")
-
-            # Save adapter
-            training_model.save_pretrained(str(adapter_path))
-            tokenizer.save_pretrained(str(adapter_path))
-            logger.info(f"[trainer] Adapter saved to {adapter_path}")
-
-            # Record in journal
-            try:
-                from core.evolution_journal import journal
-                if journal:
-                    journal.record_code_write(
-                        "lora_step", str(adapter_path),
-                        f"LoRA training on {len(training_pairs)} examples, {TRAIN_STEPS} steps",
-                        "PASS"
+                if (step_i + 1) % 25 == 0:
+                    eval_loss = _compute_eval_loss(training_model, eval_pairs)
+                    logger.info(
+                        f"[trainer] Step {step_i+1}/{actual_steps} "
+                        f"train_loss={loss.item():.4f} eval_loss={eval_loss:.4f} "
+                        f"lr={scheduler.get_last_lr()[0]:.2e}"
                     )
-            except Exception:
-                pass
+                    best_eval_loss = min(best_eval_loss, eval_loss)
+
+            # ── Step 4b: Eval gate — reject if adapter degraded eval loss ───
+            final_eval_loss = _compute_eval_loss(training_model, eval_pairs)
+            logger.info(
+                f"[trainer] Final: baseline={baseline_eval_loss:.4f} "
+                f"final={final_eval_loss:.4f} "
+                f"ratio={final_eval_loss/baseline_eval_loss:.3f} "
+                f"(threshold={EVAL_LOSS_TOLERANCE:.2f})"
+            )
+
+            if final_eval_loss <= baseline_eval_loss * EVAL_LOSS_TOLERANCE:
+                # ── Adapter accepted ──────────────────────────────────────
+                training_model.save_pretrained(str(adapter_path))
+                tokenizer.save_pretrained(str(adapter_path))
+                # Write the accepted adapter path so reload_engine() can find it
+                current_adapter_file = self._data_dir / "current_adapter.txt"
+                current_adapter_file.write_text(str(adapter_path))
+                adapter_accepted = True
+                logger.info(
+                    f"[trainer] ✅ Adapter ACCEPTED (loss {baseline_eval_loss:.4f} → "
+                    f"{final_eval_loss:.4f}) — saved to {adapter_path}"
+                )
+                try:
+                    from core.evolution_journal import journal
+                    if journal:
+                        journal.record_code_write(
+                            "lora_step", str(adapter_path),
+                            f"LoRA accepted: eval {baseline_eval_loss:.4f}→{final_eval_loss:.4f} "
+                            f"on {len(train_pairs)} examples, {actual_steps} steps",
+                            "PASS"
+                        )
+                except Exception:
+                    pass
+            else:
+                logger.warning(
+                    f"[trainer] ❌ Adapter REJECTED — eval loss degraded "
+                    f"({baseline_eval_loss:.4f} → {final_eval_loss:.4f}, "
+                    f"ratio={final_eval_loss/baseline_eval_loss:.3f} > {EVAL_LOSS_TOLERANCE}). "
+                    f"Base model unchanged."
+                )
+                adapter_path = None  # don't load this adapter
 
             # ── Step 5: Free training model VRAM ────────────────────────────
             del training_model
             training_model = None
             torch.cuda.empty_cache()
-            import gc; gc.collect()
+            gc.collect()
             logger.info("[trainer] Training model unloaded — VRAM freed")
 
         except ImportError as e:
@@ -386,16 +478,18 @@ class SelfTrainer:
             logger.error(f"[trainer] Training failed: {e}", exc_info=True)
         finally:
             # ── Steps 6–7: Always reload inference model and release lock ───
-            # Even if training crashed, Helix must be able to think again.
             try:
                 if training_model is not None:
                     del training_model
                     torch.cuda.empty_cache()
             except Exception:
                 pass
-            reload_engine()   # loads inference model back into VRAM
+            reload_engine()   # loads inference model back (with adapter if accepted)
             VRAM_LOCK.set()   # unblocks send_message() — pulses resume
-            logger.info("[trainer] Training window closed — inference resumed")
+            logger.info(
+                f"[trainer] Training window closed — inference resumed "
+                f"({'adapter active' if adapter_accepted else 'base model unchanged'})"
+            )
 
     def get_stats(self) -> dict:
         return {

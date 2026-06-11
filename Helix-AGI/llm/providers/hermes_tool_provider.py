@@ -111,6 +111,28 @@ def _load_engine():
     _device = next(_model.parameters()).device
     logger.info(f"Hermes-3 ready ✅ on {_device} ({time.time()-t0:.1f}s)")
 
+    # ── LoRA adapter: load accepted adapter if one exists ─────────────────
+    # Adapter is only written to current_adapter.txt after passing the eval
+    # gate (final_eval_loss <= baseline * EVAL_LOSS_TOLERANCE). Base model
+    # weights are frozen in LoRA — only q_proj/v_proj adapter matrices load.
+    try:
+        import os as _os
+        _adapter_marker = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "data", "current_adapter.txt"
+        )
+        if _os.path.exists(_adapter_marker):
+            _adapter_path = open(_adapter_marker).read().strip()
+            if _adapter_path and _os.path.isdir(_adapter_path):
+                from peft import PeftModel
+                _model = PeftModel.from_pretrained(_model, _adapter_path)
+                _model.eval()
+                logger.info(f"[lora] Adapter loaded from {_adapter_path}")
+            else:
+                logger.warning(f"[lora] current_adapter.txt points to missing path: {_adapter_path!r}")
+    except Exception as _adapter_err:
+        logger.warning(f"[lora] Adapter load failed (base model still active): {_adapter_err}")
+
     # ── Neural Probe: attach layer activation hooks ───────────────────────
     try:
         from core.neural_probe import attach_hooks as _attach_hooks
