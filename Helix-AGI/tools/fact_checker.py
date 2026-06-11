@@ -1,32 +1,34 @@
+import json
 import requests
 from bs4 import BeautifulSoup
-import json
 import re
 import pathlib
 
-def fact_checker(fact):
-    # Query knowledge base 1: Wikipedia
-    url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={fact}&format=json"
+def get_facts_from_wikipedia(query):
+    url = f"https://en.wikipedia.org/wiki/{query}"
     response = requests.get(url)
-    data = json.loads(response.content.decode('utf-8'))
-    if len(data) > 1:
-        summary = data[2].split('.')[0].strip()
-        if summary:
-            return 'verified'
-    # Query knowledge base 2: Google
-    elif re.search(r'\w+', fact):
-        url = f"https://www.google.com/search?q={fact}"
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        titles = [a.text for a in soup.select('div.yuRUbf > a')]
-        if titles:
-            return 'verified'
-    return 'unverified'
+    soup = BeautifulSoup(response.text, "html.parser")
+    paragraphs = soup.find_all("p")
+    facts = []
+    for p in paragraphs:
+        text = p.text.strip()
+        if text:
+            facts.append(text)
+    return facts
 
-def main():
-    fact = input("Enter a fact to check: ")
-    result = fact_checker(fact)
-    print(result)
+def calculate_confidence(statement, facts):
+    statement_words = statement.lower().split()
+    fact_words = [fact.lower() for fact in facts]
+    count = sum(1 for word in statement_words if word in fact_words)
+    return count / len(statement_words)
 
-if __name__ == '__main__':
-    main()
+def fact_checker(statement):
+    query = re.sub(r"[^a-zA-Z0-9 ]", "", statement).capitalize()
+    facts = get_facts_from_wikipedia(query)
+    confidence = calculate_confidence(statement, facts)
+    return {"statement": statement, "query": query, "confidence": confidence, "facts": facts}
+
+if __name__ == "__main__":
+    statement = "The capital of France is Paris."
+    result = fact_checker(statement)
+    print(json.dumps(result, indent=2))
