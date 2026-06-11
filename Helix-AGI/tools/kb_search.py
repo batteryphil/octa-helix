@@ -1,30 +1,32 @@
 import json
 import jsonlines
-import requests
-from bs4 import BeautifulSoup
 import re
-import pathlib
+from pathlib import Path
+from typing import List, Dict
 
-def search_curiosity_knowledge(query):
-    url = f"https://www.google.com/search?q={query}"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    results = []
-    for g in soup.find_all("div", class_="yuRUdf"):
-        title = g.find("h3", class_="r").text.strip()
-        link = "https://www.google.com" + g.find("a", class_="yuRUdf-notranslate")["href"]
-        snippet = g.find("div", class_="V7UhJnc").text.strip()
-        results.append({"title": title, "link": link, "snippet": snippet})
-    return results[:3]
+def load_knowledge_base(file_path: Path) -> List[Dict]:
+    with file_path.open() as f:
+        return list(jsonlines.Reader(f))
+
+def preprocess_query(query: str) -> str:
+    return re.sub(r'\W+', ' ', query).strip().lower()
+
+def calculate_similarity(query: str, entry: Dict) -> float:
+    query_words = set(preprocess_query(query).split())
+    entry_words = set(entry['text'].split())
+    return len(query_words & entry_words) / len(query_words | entry_words)
+
+def search_knowledge_base(query: str, knowledge_base: List[Dict], top_k: int = 3) -> List[Dict]:
+    query = preprocess_query(query)
+    return sorted(knowledge_base, key=lambda x: calculate_similarity(query, x), reverse=True)[:top_k]
 
 def main():
-    query = input("Enter a search query: ")
-    results = search_curiosity_knowledge(query)
+    knowledge_base_file = Path('curiosity_knowledge.jsonl')
+    query = 'What is the capital of France?'
+    knowledge_base = load_knowledge_base(knowledge_base_file)
+    results = search_knowledge_base(query, knowledge_base, top_k=3)
     for i, result in enumerate(results, 1):
-        print(f"Result {i}:")
-        print(f"  Title: {result['title']}")
-        print(f"  Link: {result['link']}")
-        print(f"  Snippet: {result['snippet']}")
+        print(f"Result {i}: {result['text']}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
