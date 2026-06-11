@@ -28,7 +28,7 @@ from typing import List, Optional
 
 logger = logging.getLogger("helix.training.self_trainer")
 
-EXPERIENCE_THRESHOLD = 500   # tuples before triggering training
+EXPERIENCE_THRESHOLD = 2000   # tuples before triggering training (~100hrs runtime)
 TRAIN_STEPS = 100            # LoRA steps per training run
 IDLE_REQUIRED = 600          # 10 min idle before training starts
 MIN_TOOL_DIVERSITY = 2       # unique tool types needed before training
