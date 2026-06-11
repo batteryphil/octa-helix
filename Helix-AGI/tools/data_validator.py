@@ -1,36 +1,32 @@
 import json
-import re
-import pathlib
-from pathlib import Path
-from typing import Any, Dict
+import sys
 
-def validate_json_file(file_path: Path) -> str:
+def validate_json(json_str, schema):
     try:
-        with file_path.open('r') as f:
-            data: Dict[str, Any] = json.load(f)
-        return 'valid'
+        data = json.loads(json_str)
+        return jsonschema.validate(data, schema), None
     except json.JSONDecodeError as e:
-        return 'invalid', str(e)
-
-def validate_file_format(file_path: Path) -> str:
-    if file_path.suffix == '.json':
-        return validate_json_file(file_path)
-    else:
-        return 'invalid', f'Unsupported file format: {file_path.suffix}'
+        return None, str(e)
+    except jsonschema.ValidationError as e:
+        return None, str(e)
 
 def main():
-    import sys
-    if len(sys.argv) != 2:
-        print('Usage: python data_validator.py <file_path>')
+    if len(sys.argv) != 3:
+        print("Usage: python data_validator.py <json_string> <schema_file>")
         sys.exit(1)
-    
-    file_path = Path(sys.argv[1])
-    if not file_path.is_file():
-        print(f'Error: {file_path} is not a file.')
-        sys.exit(1)
-    
-    status, message = validate_file_format(file_path)
-    print(status, message)
 
-if __name__ == '__main__':
+    json_str = sys.argv[1]
+    schema_file = sys.argv[2]
+
+    with open(schema_file) as f:
+        schema = json.load(f)
+
+    result, error = validate_json(json_str, schema)
+
+    if result:
+        print("valid")
+    else:
+        print(f"invalid: {error}")
+
+if __name__ == "__main__":
     main()
