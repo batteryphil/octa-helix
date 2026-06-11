@@ -1,33 +1,47 @@
 import json
+import jsonlines
 import os
-import datetime
-import random
-import matplotlib.pyplot as plt
+import sys
+from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
 from typing import List, Dict
 
-import requests
-from bs4 import BeautifulSoup
+class CuriosityTracker:
+    def __init__(self, data_file: str):
+        self.data_file = data_file
+        self.knowledge = []
+        self.load_data()
 
-DATA_FILE = "curiosity_data.json"
-PLOT_FILE = "curiosity_plot.png"
+    def load_data(self):
+        if os.path.exists(self.data_file):
+            with open(self.data_file, 'r') as f:
+                self.knowledge = list(jsonlines.Reader(f))
+        else:
+            print(f"File {self.data_file} not found. Creating a new file.")
 
-def get_curiosity_score(url: str) -> float:
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    score_element = soup.find("div", class_="curiosity-score")
-    return float(score_element.text.strip())
+    def save_data(self):
+        with open(self.data_file, 'a') as f:
+            jsonlines.Writer(f).write(self.knowledge)
 
-def log_curiosity_event(date: datetime.date, score: float) -> None:
-    data = Path(DATA_FILE)
-    if not data.exists():
-        data.write_text("[]")  # Fixed the syntax error here
+    def add_knowledge(self, fact: Dict):
+        self.knowledge.append(fact)
+        self.save_data()
 
-    with open(DATA_FILE, "r") as file:
-        events = json.load(file)
+    def get_new_facts(self, date: str) -> List[Dict]:
+        new_facts = []
+        for fact in self.knowledge:
+            if fact.get('timestamp')[:10] == date:
+                new_facts.append(fact)
+        return new_facts
 
-    events.append({"date": str(date), "score": score})  # Fixed the syntax error here
+    def get_new_facts_count(self, date: str) -> int:
+        return len(self.get_new_facts(date))
 
-    with open(DATA_FILE, "w") as file:
-        json.dump(events, file)
+    def get_total_knowledge(self) -> int:
+        return len(self.knowledge)
+
+if __name__ == '__main__':
+    tracker = CuriosityTracker('curiosity_knowledge.jsonl')
+    today = datetime.now().strftime('%Y-%m-%d')
+    new_facts = tracker.get_new_facts(today)
+    print(f"New facts added on {today}: {new_facts}")
