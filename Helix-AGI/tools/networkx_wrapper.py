@@ -7,16 +7,18 @@ def load_jsonl_to_digraph(file_path):
     with jsonlines.open(file_path) as f:
         for line in f:
             data = json.loads(line)
-            G.add_node(data['node'])
-            for neighbor in data['neighbors']:
-                G.add_edge(data['node'], neighbor)
+            node = data['node']
+            neighbors = data.get('neighbors', [])
+            G.add_node(node)
+            for neighbor in neighbors:
+                G.add_edge(node, neighbor)
     return G
 
 def get_neighbors(G, node):
-    return G.neighbors(node)
+    return list(G.successors(node))
 
 if __name__ == '__main__':
-    file_path = 'path/to/jsonl/file'
+    file_path = 'example.jsonl'
     G = load_jsonl_to_digraph(file_path)
     node = 'example_node'
     neighbors = get_neighbors(G, node)
