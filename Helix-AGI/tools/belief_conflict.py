@@ -1,33 +1,26 @@
 import json
-import os
-from pathlib import Path
-from typing import List, Tuple
+from typing import List, Dict
 
-def load_beliefs(filename: str) -> List[dict]:
-    with open(filename, 'r') as f:
-        return json.load(f)
-
-def belief_conflicts(beliefs: List[dict]) -> List[Tuple[str, str]]:
-    conflicts = []
-    for i, belief1 in enumerate(beliefs):
-        for belief2 in beliefs[i+1:]:
-            if belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7:
-                if belief1['text'].strip().lower() != belief2['text'].strip().lower():
-                    conflicts.append((belief1['id'], belief2['id']))
-    return conflicts
-
-def reconcile_conflict(conflict: Tuple[str, str]) -> str:
-    belief1_id, belief2_id = conflict
-    belief1 = next(b for b in beliefs if b['id'] == belief1_id)
-    belief2 = next(b for b in beliefs if b['id'] == belief2_id)
-    return f"{belief1['text']} and {belief2['text']} are in conflict"
-
-def main():
-    filename = Path("beliefs.json")
-    beliefs = load_beliefs(filename)
-    conflicts = belief_conflicts(beliefs)
-    for conflict in conflicts:
-        print(reconcile_conflict(conflict))
-
-if __name__ == "__main__":
-    main()
+def belief_conflict_resolution(beliefs: List[Dict[str, float]]) -> Dict[str, float]:
+    # Sort beliefs by confidence score in descending order
+    sorted_beliefs = sorted(beliefs, key=lambda x: x['confidence'], reverse=True)
+    
+    # Initialize variables
+    consensus_belief = {}
+    min_conflict = float('inf')
+    
+    # Iterate through the sorted beliefs to find the consensus belief
+    for belief in sorted_beliefs:
+        current_conflict = 0
+        for other_belief in sorted_beliefs:
+            if belief != other_belief:
+                # Calculate the conflict between the current belief and other beliefs
+                conflict = abs(belief['confidence'] - other_belief['confidence'])
+                current_conflict += conflict
+        
+        # Check if the current belief has the lowest conflict
+        if current_conflict < min_conflict:
+            min_conflict = current_conflict
+            consensus_belief = belief
+    
+    return consensus_belief
