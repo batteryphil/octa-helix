@@ -1,26 +1,29 @@
 import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
-def load_beliefs(file_path: Path) -> List[Tuple[str, float]]:
-    with open(file_path, 'r') as f:
-        beliefs = json.load(f)
-    return [(belief['statement'], belief['confidence']) for belief in beliefs if 'confidence' in belief]
+from bs4 import BeautifulSoup
+import requests
 
-def find_conflict_pairs(beliefs: List[Tuple[str, float]], confidence_threshold: float) -> List[Tuple[str, str, float]]:
-    conflicts = []
-    for i in range(len(beliefs)):
-        for j in range(i+1, len(beliefs)):
-            if beliefs[i][1] > confidence_threshold and beliefs[j][1] > confidence_threshold and not beliefs[i][0] == beliefs[j][0]:
-                conflicts.append((beliefs[i][0], beliefs[j][0], max(beliefs[i][1], beliefs[j][1])))
-    return conflicts
+# Mock belief store
+belief_store = [
+    {"id": 1, "text": "The sky is blue", "confidence": 0.9},
+    {"id": 2, "text": "The sky is green", "confidence": 0.8},
+    {"id": 3, "text": "2 + 2 = 4", "confidence": 0.95},
+    {"id": 4, "text": "2 + 2 = 5", "confidence": 0.6},
+]
 
-def main():
-    beliefs_file = Path('beliefs.json')
-    confidence_threshold = 0.8
-    beliefs = load_beliefs(beliefs_file)
-    conflicts = find_conflict_pairs(beliefs, confidence_threshold)
-    print(json.dumps(conflicts, indent=2))
+def find_conflicting_beliefs(
+    beliefs: List[Dict[str, float]], confidence_threshold: float
+) -> List[Tuple[int, int]]:
+    conflicting_pairs = []
+    for i, belief1 in enumerate(beliefs):
+        for j in range(i + 1, len(beliefs)):
+            belief2 = beliefs[j]
+            if belief1["confidence"] > confidence_threshold and belief2["confidence"] > confidence_threshold and belief1["text"] != belief2["text"]:
+                conflicting_pairs.append((belief1["id"], belief2["id"]))
+    return conflicting_pairs
 
-if __name__ == '__main__':
-    main()
+# Example usage
+conflicts = find_conflicting_beliefs(belief_store, 0.7)
+print(json.dumps(conflicts, indent=2))
