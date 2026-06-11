@@ -147,16 +147,57 @@ class SelfTrainer:
                 quality = 0.6
 
             # Build the prompt for the tuple.
-            # CRITICAL: events is a List[str] and may be EMPTY for autonomous
-            # mandate pulses (no user activity = no queued events). Empty list
-            # is falsy in Python, so `events or ""` would be "", causing every
-            # autonomous pulse to be silently rejected.
-            # Fix: fall back to the thought itself as the prompt context.
-            raw_events = getattr(ctx, "events", None)
-            if raw_events:  # non-empty list
-                pulse_msg = "\n".join(str(e) for e in raw_events)
-            else:           # empty list or None — use thought as context
-                pulse_msg = thought[:300]
+            #
+            # OLD approach: dump raw_events → produced "[Pulse N]\n<spatial-awareness>..."
+            # which is the pulse INPUT context, not a meaningful training signal.
+            # LoRA trained on that would learn: "given a pulse header, call search."
+            #
+            # NEW approach: build prompt from the TOOL CALL ITSELF, which is
+            # always available here (tool_success gate already passed).
+            # Training pair becomes:
+            #   prompt:   "[search] Gödel machine AI"
+            #   response: "The Gödel Machine is a theoretical framework for..."
+            # This teaches: "given a meaningful question, use tools and reason."
+            #
+            # Fallback chain:
+            #   1. Tool name + query/path args (cleanest signal)
+            #   2. Curiosity finding from events (if present)
+            #   3. First 300 chars of thought (last resort)
+            pulse_msg = ""
+
+            # Priority 1: tool call arguments (cleanest)
+            if tool_calls and tool_name:
+                args = tool_calls[0].get("arguments", {}) or {}
+                query_val = args.get("query") or args.get("path") or args.get("content", "")[:80]
+                if query_val and len(str(query_val).strip()) > 5:
+                    pulse_msg = f"[{tool_name}] {str(query_val).strip()}"
+
+            # Priority 2: curiosity finding line from events (second-cleanest)
+            if not pulse_msg:
+                raw_events = getattr(ctx, "events", None) or []
+                for ev in raw_events:
+                    ev_str = str(ev)
+                    if "curiosity_finding" in ev_str or "question" in ev_str.lower():
+                        # Strip the timestamp prefix and dict wrapper
+                        import re as _re
+                        m = _re.search(r"'question':\s*'([^']{10,})'", ev_str)
+                        if m:
+                            pulse_msg = f"[curiosity] {m.group(1)[:200]}"
+                            break
+                        # Fallback: use the raw finding but strip the timestamp
+                        clean = _re.sub(r"^\[\d{2}:\d{2}:\d{2}\]\s*", "", ev_str)
+                        if len(clean) > 20:
+                            pulse_msg = clean[:200]
+                            break
+
+            # Priority 3: first meaningful sentence of thought
+            if not pulse_msg:
+                first_line = thought.strip().split("\n")[0].strip()
+                if len(first_line) > 20:
+                    pulse_msg = first_line[:300]
+                else:
+                    pulse_msg = thought[:300]
+
             if not pulse_msg:
                 return
 
