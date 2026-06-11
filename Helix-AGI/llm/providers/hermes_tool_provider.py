@@ -402,6 +402,32 @@ class HermesToolSession:
                         messages, tokenize=False, add_generation_prompt=True
                     )
 
+                # ── Mandate prefilling: force tool_call output ──────────────
+                # The model ignores text instructions to "call a tool" and
+                # defaults to its trained prose pattern ("As I reflect...").
+                # Solution: append <tool_call>\n to the prompt so the model's
+                # first generated token MUST be part of the tool call JSON.
+                # This is standard Hermes-3 assistant prefilling.
+                _prefill_str = ""  # track for raw reconstruction
+                if is_mandate_pulse and loop_i == 0:
+                    # Pick the most contextually relevant tool to seed with
+                    if openai_tools:
+                        tool_names = [t['function']['name'] for t in openai_tools
+                                      if isinstance(t, dict) and 'function' in t]
+                        import random as _rand
+                        # Prefer search/system tools for mandate pulses
+                        preferred = [n for n in tool_names if any(
+                            k in n.lower() for k in
+                            ['search','health','belief','note','metric','system']
+                        )]
+                        seed_tool = _rand.choice(preferred) if preferred else (_rand.choice(tool_names) if tool_names else 'search')
+                    else:
+                        seed_tool = 'search'
+                    # Append partial tool call to prime generation
+                    _prefill_str = f'<tool_call>\n{{"name": "{seed_tool}", "arguments": '
+                    prompt = prompt + _prefill_str
+                    logger.warning(f"[hermes] Mandate prefill: seeding with tool='{seed_tool}'")
+
                 input_ids = self._tokenizer(
                     prompt, return_tensors="pt"
                 ).input_ids.to(self._device)
@@ -427,13 +453,18 @@ class HermesToolSession:
                     out[0][input_ids.shape[1]:], skip_special_tokens=False
                 ).strip()
 
+                # If we prefilled a partial tool_call, reconstruct the full string
+                # for the parser. The model only generates the JSON completion;
+                # prepend the known prefix so _parse_tool_calls sees a full tag.
+                raw_for_parse = (_prefill_str + raw) if _prefill_str else raw
+
             except Exception as e:
                 logger.error(f"Hermes generation error: {e}")
                 final_response = f"(generation error: {e})"
                 break
 
-            tool_calls = _parse_tool_calls(raw)
-            logger.warning(f"HERMES RAW[{loop_i}]={raw[:300]!r}")
+            tool_calls = _parse_tool_calls(raw_for_parse)
+            logger.warning(f"HERMES RAW[{loop_i}]={raw_for_parse[:300]!r}")
             logger.warning(f"HERMES CALLS[{loop_i}]={tool_calls}")
 
             if tool_calls and self._executor:
