@@ -453,17 +453,33 @@ def _store_belief_direct(
         "s_total": encoding_delta.get("delta_s_total", 0.0),
     }
 
+    # Standardize the belief schema before writing.
+    # The belief store previously accepted free-form dicts causing schema drift
+    # (some beliefs used 'content', some 'belief', some 'text'). Downstream
+    # tools (kb_search, belief_conflict) couldn't reliably read them back.
+    # All beliefs now ALWAYS write these four keys:
+    #   core_assertion  — the belief in one sentence (was: content/belief/text)
+    #   category        — classifier label
+    #   confidence      — 0.0–1.0
+    #   timestamp_iso   — ISO 8601
+    # The 'content' field is kept as an alias for backward compat.
+    import datetime as _dt
+    standardized_content = belief_text.strip()
+
     try:
         added = _belief_store.add_belief(
             category=category,
             belief_id=belief_id,
-            content=belief_text,
+            content=standardized_content,          # backward compat key
             confidence=0.5,
             source="belief_detector",
             verifications=1.0,
             stability_index=max(0.3, 0.5 + encoding_delta.get("delta_omega", 0.0)),
             memory_refs=[memory_id] if memory_id > 0 else [],
             encoding_lagrangian=encoding_lagrangian,
+            # Standardized schema — always present, always same keys:
+            core_assertion=standardized_content,
+            timestamp_iso=_dt.datetime.utcnow().isoformat() + "Z",
         )
         if added:
             logger.info(

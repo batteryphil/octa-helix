@@ -927,6 +927,28 @@ class PulseLoop:
         """Assemble the message sent to the LLM on each pulse."""
         parts = [f"[Pulse {self._pulse_count} — {timestamp}]"]
 
+        # ── Active Toolkit Manifesto (F3 fix) ────────────────────────────────
+        # Helix was rewriting the same tool files 20-29x because it lost track
+        # of what it had already built when the context window cycled. Showing
+        # the current toolset on every pulse shifts it from creation→invocation.
+        try:
+            import os as _os
+            _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "tools")
+            _tool_names = sorted(
+                f[:-3] for f in _os.listdir(_tools_dir)
+                if f.endswith(".py") and not f.startswith("_")
+                and f not in ("tool_executor.py", "tool_declarations.py",
+                              "tool_registry.py", "tool_health_check.py")
+            )
+            if _tool_names:
+                parts.append(
+                    f"ACTIVE TOOLKIT ({len(_tool_names)} tools): "
+                    + ", ".join(_tool_names[:30])  # cap at 30 to limit tokens
+                    + (" …" if len(_tool_names) > 30 else "")
+                )
+        except Exception:
+            pass
+
         # Token warning (informational, not a hard reset)
         if self._token_warning:
             parts.append(self._token_warning)

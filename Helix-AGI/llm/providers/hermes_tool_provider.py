@@ -194,27 +194,42 @@ def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
             logger.warning(f"JSON tool_call parse failed: {m[:60]}")
 
     # ── Format 1b: Partial/truncated <tool_call> (no closing tag) ────────────
-    # When EOS fires before </tool_call>, try to recover the partial JSON.
+    # When EOS fires before </tool_call>, reconstruct from whatever the model
+    # managed to generate. Key fixes vs old version:
+    #   1. rstrip() tail so trailing \n doesn't create invalid JSON strings
+    #   2. Replace embedded literal newlines with spaces before json.loads
+    #   3. Postfill Trailer: if empty/trivially-short query recovered from a
+    #      prefill pulse, look for meaningful text elsewhere in the raw output
     if not calls and '<tool_call>' in text and '</tool_call>' not in text:
         tail = text[text.index('<tool_call>') + len('<tool_call>'):].strip()
-        for stop in ['<|im_end|>', '\n\n']:
+        for stop in ['<|im_end|>', '</s>', '\n\n', '\n<']:
             if stop in tail:
-                tail = tail[:tail.index(stop)].strip()
+                tail = tail[:tail.index(stop)]
                 break
+        tail = tail.rstrip()           # strip trailing whitespace / bare \n
         # Close open strings and braces
         if tail.count('"') % 2 == 1:
             tail += '"'
         opens = tail.count('{') - tail.count('}')
         tail += '}' * max(0, opens)
+        # Replace embedded literal newlines so json.loads doesn't reject them
+        tail_clean = tail.replace('\n', ' ').replace('\r', '')
         try:
-            obj = json.loads(tail)
+            obj = json.loads(tail_clean)
             if 'name' in obj:
                 if isinstance(obj.get("arguments"), str):
                     obj["arguments"] = json.loads(obj["arguments"])
-                calls.append(obj)
-                logger.warning(f"[parser] Recovered partial tool_call: {obj.get('name')}")
-        except json.JSONDecodeError:
-            pass
+                # Postfill Trailer: if query recovered as empty, reject — don't
+                # train on empty-string tool calls.
+                args = obj.get("arguments", {})
+                query_val = args.get("query", "NONEMPTY")
+                if isinstance(query_val, str) and len(query_val.strip()) < 3:
+                    logger.warning("[parser] Format-1b discarded: recovered empty/trivial query")
+                else:
+                    calls.append(obj)
+                    logger.warning(f"[parser] Recovered partial tool_call: {obj.get('name')}({args})")
+        except json.JSONDecodeError as _je:
+            logger.warning(f"[parser] Format-1b JSON still failed after fixes: {_je} | tail={tail_clean[:80]!r}")
 
     # ── Format 2: Bracket action tags ────────────────────────────────────────
     # [SEARCH <query>]
