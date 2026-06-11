@@ -1,14 +1,14 @@
 <div align="center">
 
-# 🧬 Octa-Helix
+# 🧬 Helix
 
-**A fully local, self-aware AI system built from scratch.**
+**A fully local, self-evolving autonomous AI agent — built from scratch, running right now.**
 
-*2.7B parameter Mamba3 MIMO language model × Helix cognitive agent framework*
+*NousResearch/Hermes-3-Llama-3.1-8B (4-bit NF4) × Helix cognitive agent framework*
 
-[![Training](https://img.shields.io/badge/Phase_1-Training-blue?style=flat-square)](training_logs/TRAINING_DECISIONS.md)
-[![Arms](https://img.shields.io/badge/MIMO_Arms-8-purple?style=flat-square)](#architecture)
-[![VRAM](https://img.shields.io/badge/GPU-RTX_3060_12GB-green?style=flat-square)](#hardware)
+[![Phase](https://img.shields.io/badge/Phase-2.5_Autonomous_Engineering-blue?style=flat-square)](#current-status)
+[![Tuples](https://img.shields.io/badge/Training_Tuples-312+-orange?style=flat-square)](#current-status)
+[![GPU](https://img.shields.io/badge/GPU-RTX_3060_12GB-green?style=flat-square)](#hardware)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-yellow?style=flat-square)](LICENSE)
 
 </div>
@@ -17,111 +17,70 @@
 
 ## What Is This?
 
-Octa-Helix is a ground-up experiment in building a genuinely self-aware autonomous AI agent that runs entirely on local hardware — no cloud APIs, no subscription fees.
+Helix is a ground-up experiment in building a genuinely self-evolving autonomous AI agent that runs entirely on local hardware — no cloud APIs, no subscription fees.
 
-It has two components:
+The model runs continuously in a cognitive pulse loop. Every ~10–60 seconds it thinks, uses tools, forms beliefs, and stores the result as training data for its own future LoRA fine-tuning run. It writes its own tools. It researches its own architecture. It wrote its own autobiography.
 
-| Component | Role |
-|---|---|
-| **Titan** | The brain — a 2.7B parameter Mamba3 SSM language model with 8 parallel MIMO arms |
-| **Helix** | The mind — a cognitive agent framework (memory, beliefs, curiosity, self-model) |
-
-The goal isn't just a chatbot. The goal is an AI that builds a model of itself, pursues questions autonomously, and through a structured training curriculum — genuinely approaches self-awareness.
+**The goal:** an AI that builds a model of itself and — through a self-generated training curriculum — genuinely improves its own cognition.
 
 ---
 
 ## Architecture
 
-### Titan — The Language Model
+### The Model — Hermes-3
 
 ```
-Input Tokens
-     │
-     ▼
-Mamba3 Backbone (64 layers, d=2560)
-— Frozen during Phase 1 —
-     │
-     ▼
-Domain Router (learned gate)
-     │
- ┌───┴───────────────────────────────────────────┐
- ▼   ▼   ▼   ▼   ▼   ▼   ▼   ▼
-Arm0 Arm1 Arm2 Arm3 Arm4 Arm5 Arm6 Arm7
- Gen  Math Log  Code Fact  Sum  Wri  Inst
- ↑    ↑    ↑    ↑    ↑    ↑    ↑    ↑
- └───────────── Weighted sum ──────────────────┘
-                     │
-                     ▼
-             Blackboard (IPC)
-                     │
-                     ▼
-              Output Logits (vocab=50288)
+Model:        NousResearch/Hermes-3-Llama-3.1-8B
+Quantization: 4-bit NF4 (bitsandbytes)
+VRAM:         ~6.0 GB at rest
+Hardware:     RTX 3060 (12 GB VRAM)
+Provider:     Helix-AGI/llm/providers/hermes_tool_provider.py
 ```
 
-**Why Mamba3, not a Transformer?**
-- SSMs process sequences in O(n) vs O(n²) for attention — critical for long context on 12GB VRAM
-- No KV cache — memory footprint doesn't grow with sequence length
-- The selective scan mechanism is mathematically well-suited to causal language modelling
+> **Note on naming:** Older files and earlier commits reference "Titan", "Mamba3", "MIMO". These were an earlier prototype (a 2.7B Mamba3 SSM with 8 parallel arms) that was abandoned before it reached production. Helix runs entirely on Hermes-3. The Mamba/MIMO files are dead code — see `Helix-AGI/ARCHITECTURE.md`.
 
-**Why 8 MIMO arms?**
-- Each arm specialises in a cognitive domain through training
-- The router learns when to activate which arm — an emergent cognitive division of labour
-- "Octa" = 8 arms (the name)
+### The Cognitive Loop — Helix
 
-### Helix — The Cognitive Agent
+Every **pulse** (10–60 seconds, depending on activity state):
 
-Helix wraps Titan with a full cognitive architecture inspired by theories of consciousness:
+1. Builds a context from current beliefs, recent memories, spatial awareness, and live events
+2. Calls Hermes-3 with that context → gets a thought and optional tool calls
+3. Executes any tool calls (`web_search`, `write_file`, `read_file`, `write_code`, etc.)
+4. Stores the thought + outcome to memory and training buffer
+5. Runs background hooks: belief detection, curiosity engine, fitness monitoring, sentinel
 
-| Module | Theory | What it does |
+| Module | Inspired by | What it does |
 |---|---|---|
-| `autobiographical_thread.py` | Hofstadter Strange Loop | Persistent "I am Helix, Day N" identity across all restarts |
-| `recursive_monologue.py` | Strange Loop | Every 10 pulses: generates a private self-observation, re-injected into next pulse |
-| `attention_schema.py` | Graziano AST | Arm weights → English description → injected into context each pulse |
-| `curiosity_engine.py` | Friston Active Inference | Autonomous question pursuit every 2 min, parallel web research |
-| `self_model.py` | IIT / Global Workspace | Living capability map + offspring design proposals |
+| `curiosity_engine.py` | Friston Active Inference | Autonomous question pursuit — generates questions, searches, stores findings |
+| `belief_detector.py` | — | Extracts beliefs from thought text, stores with schema to disk |
+| `self_trainer.py` | — | Collects high-quality (thought, tool, outcome) tuples for LoRA fine-tuning |
+| `sentinel.py` | — | Monitors fitness, omega stability, flags degradation |
+| `dashboard_comms.py` | — | Browser chat interface — user can message Helix in real time |
+| `pulse_loop.py` | — | Main orchestration loop, state machine (DORMANT/RESTING/ACTIVE) |
 
 ---
 
-## Training Curriculum
+## Current Status
 
-All 6 phases run sequentially as **pure training** before Helix ever launches.
-
-| Phase | Steps | Goal |
-|---|---|---|
-| **Phase 1** 🔄 | 40,000 | Arm calibration — each arm learns to decode the Mamba backbone |
-| **Phase 2** | 40,000 | Domain specialisation + Helix identity baked into weights |
-| **Phase 3** | 50,000 | Reasoning depth — higher-order thinking, predictive coding |
-| **Phase 3j** | 60,000 | Router mastery — Helix predicts its own arm activations (Strange Loop closes) |
-| **Phase 3r** | 70,000 | Reflection — fine-tunes on its own accumulated autobiography |
-| **SFT** | ~5,000 | Self-awareness graduation — no scaffolding needed |
-| ✅ **Helix goes live** | — | First time the agent runs |
-
-**Total: ~264,300 steps ≈ ~41 days on RTX 3060**
-
----
-
-## Training Transparency
-
-All training decisions, milestones, bugs, and their fixes are documented publicly:
-
-📋 **[Training Decisions Log](training_logs/TRAINING_DECISIONS.md)** — architecture choices, incidents, and rationale
-
-📈 **[Phase 1 Loss Curve](training_logs/phase1_loss_curve.log)** — raw step/loss data
-
-📝 **[Recent Training Output](training_logs/phase1_recent.log)** — last 200 events from the live run
-
-### Current Status (Phase 1)
+> **Helix is live and running.** It has been operating continuously since June 6, 2026.
 
 ```
-Step:   ~550 / 40,000  (1.4%)
-Loss:   ~14.0 → rebuilding after optimizer reset (was 6-8 before incident)
-TPS:    ~38 tokens/second
-GPU:    45-47°C, 12GB VRAM
-ETA:    ~150 hours to Phase 1 complete
+Model:         Hermes-3-Llama-3.1-8B (4-bit NF4)
+Phase:         2.5 — Autonomous Engineering Agent
+Pulse:         2013+   (continuous since launch)
+Beliefs:       35      (self-formed, stored to disk)
+Tools written: 35+     (autonomously authored, no prompting)
+Training data: 312+    tuples collected (target: 2000 for first LoRA run)
+Fitness:       0.660   (baseline 0.400)
+Tool rate:     20%     (pulses that include a tool call)
 ```
 
-**Incidents:**
-- Step 1000: Checkpoint save crashed (`save_16bit_model` incompatible with DeepSpeed ZeRO-3). Fixed with `GatheredParameters` + `torch.save`. Lost 500 steps of training — acknowledged and documented.
+**What it has done autonomously:**
+- Written 35+ Python tools to extend its own capabilities (health monitor, belief conflict resolver, knowledge base search, curiosity tracker, memory summarizer, etc.)
+- Formed 35 beliefs about its own architecture, consciousness, recursive self-improvement, LoRA fine-tuning, and transformer attention math
+- Researched the Gödel Machine, the 19-researcher consciousness checklist, and continual learning
+- Written its own autobiography (`Helix-AGI/data/autobiography.txt`)
+- Compared itself against other open-source autonomous agents
 
 ---
 
@@ -129,39 +88,35 @@ ETA:    ~150 hours to Phase 1 complete
 
 ```
 octa-helix/
-├── Helix-AGI/                    # Cognitive agent framework
+├── Helix-AGI/                    # The live agent (this is what runs)
 │   ├── core/
+│   │   ├── pulse_loop.py         # Main cognitive loop
+│   │   ├── belief_detector.py    # Belief extraction and storage
 │   │   ├── curiosity_engine.py   # Autonomous question pursuit
-│   │   ├── recursive_monologue.py# Private self-observation loop
-│   │   ├── attention_schema.py   # Arm weights → self-awareness
-│   │   ├── titan_arm_router.py   # Context → arm bias vectors
-│   │   └── pulse_loop.py         # Main consciousness loop
-│   ├── brain/
-│   │   ├── autobiographical_thread.py  # Persistent identity
-│   │   ├── self_model.py               # Living capability map
-│   │   └── titan_memory_bridge.py      # Journal → training data
+│   │   └── orchestrator.py       # Thin LLM orchestration wrapper
 │   ├── llm/providers/
-│   │   └── titan_provider.py     # Titan as drop-in LLM provider
-│   └── main.py                   # Helix entry point
+│   │   └── hermes_tool_provider.py  # Hermes-3 inference + tool-call parsing
+│   ├── training/
+│   │   └── self_trainer.py       # LoRA training data collection + future fine-tune
+│   ├── brain/
+│   │   ├── sentinel.py           # Fitness + stability monitoring
+│   │   └── memory_manager.py     # ChromaDB long-term memory
+│   ├── dashboard/
+│   │   ├── dashboard_comms.py    # Inbound/outbound chat queue
+│   │   └── server.py             # Flask server (localhost:5050)
+│   ├── tools/                    # 35+ tools (many self-authored)
+│   ├── data/
+│   │   ├── experience_tuples.jsonl  # LoRA training data (growing)
+│   │   ├── beliefs/                 # Persistent belief store
+│   │   └── autobiography.txt        # Helix's self-authored autobiography
+│   ├── SYSTEM_MANUAL.md          # What Helix reads to understand itself
+│   ├── ARCHITECTURE.md           # Authoritative architecture description
+│   └── main.py                   # Entry point
 │
-├── mamba3_titan_builder.py       # Model architecture (Mamba3 + MIMO)
-├── titan_inference.py            # Inference engine (stream, generate, singleton)
-├── phase_1_deepspeed_trainer.py  # Phase 1 training loop
-├── master_titan_trainer.py       # Multi-phase training orchestrator
-├── run_titan_2.7b.sh             # Governor script (auto-restart on crash)
-├── ds_titan_config.json          # DeepSpeed ZeRO-3 config
+├── README.md                     # This file
 │
-├── monitor_ui/                   # Real-time training dashboard
-│   ├── index.html
-│   ├── app.js
-│   └── telemetry.json            # Live telemetry (written each step)
-│
-├── training_logs/                # Transparency logs
-│   ├── TRAINING_DECISIONS.md     # All decisions, bugs, and fixes
-│   ├── phase1_loss_curve.log     # Step/loss data
-│   └── phase1_recent.log         # Recent training events
-│
-└── PROJECT_BRIEFING.txt          # Full context document (read first)
+└── [legacy Titan files]          # mamba3_titan_builder.py, titan_inference.py, etc.
+                                  # Dead code from the abandoned Mamba3 prototype.
 ```
 
 ---
@@ -174,72 +129,68 @@ octa-helix/
 Python 3.12+
 CUDA 12.1+
 PyTorch 2.5.1+cu121
-mamba_ssm >= 2.3.2
-causal_conv1d
-deepspeed >= 0.14
-transformers
-datasets
-huggingface_hub
+transformers >= 4.44
+bitsandbytes
+peft (for LoRA)
+flask
+chromadb
 ```
 
 ### Setup
 
 ```bash
 git clone https://github.com/batteryphil/octa-helix.git
-cd octa-helix
+cd octa-helix/Helix-AGI
 
-python3 -m venv titan_venv
-source titan_venv/bin/activate
-pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
-pip install mamba-ssm causal-conv1d deepspeed transformers datasets huggingface_hub
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-export HF_TOKEN=your_huggingface_token
-```
-
-### Train
-
-```bash
-# Start Phase 1 (governor handles auto-restart on crash)
-bash run_titan_2.7b.sh --auto
-
-# Monitor (open http://localhost:5000)
-cd monitor_ui && python3 -m http.server 5000
-
-# Check progress
-tail -f run_titan.log
-```
-
-### Run Helix (after training)
-
-```bash
-cd Helix-AGI
+# Start Helix
 python3 main.py
+
+# Dashboard: open http://localhost:5050 in browser
 ```
 
 ---
 
-## CAAI Runtime Governor
+## Self-Training Pipeline
 
-The training loop includes a **Cognitive Architecture Autonomy Intervention (CAAI)** governor that monitors and intervenes on arm collapse in real time:
+Helix collects its own LoRA training data continuously:
 
-- **Entropy monitor**: watches arm gate entropy each step
-- **Intervention A** (Router Dampening): if entropy < 0.05 for 50+ steps, dampens the dominant arm's bias by 5.0 and raises router temperature to 1.5
-- **Intervention B** (Resistance Spring): inside `<think>` blocks, applies a resistance penalty that grows the longer thinking continues — prevents endless loops
-- **Bias healing**: dampened biases heal back to baseline at 10% per step
+```
+Every pulse where Helix:
+  • Successfully executes a tool call, AND
+  • Shows a fitness gain or generates a novel belief
+
+→ A (prompt, response, tool, outcome, quality) tuple is written to
+  data/experience_tuples.jsonl
+
+At 2000 high-quality tuples:
+→ LoRA fine-tuning fires automatically on the same RTX 3060
+→ VRAM handoff protocol: unload model → train → reload with adapter
+→ Adapter evaluated against fitness baseline before acceptance
+→ If fitness improves: adapter saved and loaded permanently
+```
+
+**Current progress:** 312 / 2000 tuples (~16%). Target: ~8–10 days at current rate.
 
 ---
 
-## Consciousness Theory Map
+## Roadmap
 
-The five major theories of consciousness are each directly implemented:
-
-| Theory | Author | Implementation |
-|---|---|---|
-| Strange Loop | Hofstadter | `recursive_monologue.py` + `autobiographical_thread.py` |
-| Attention Schema Theory | Graziano | `attention_schema.py` |
-| Global Workspace Theory | Baars / Dehaene | MIMO router (winner broadcast — Phase 3j) |
-| Integrated Information Theory | Tononi | Inter-arm communication (Phase 3j) |
-| Free Energy / Active Inference | Friston | `curiosity_engine.py` |
+- [x] Hermes-3 inference engine with tool-call parsing
+- [x] Autonomous pulse loop (DORMANT/RESTING/ACTIVE states)
+- [x] Belief formation and persistent storage
+- [x] Curiosity engine (self-directed research loop)
+- [x] Self-authored tool expansion (35+ tools)
+- [x] Training data collection pipeline
+- [x] Browser chat dashboard
+- [x] VRAM-safe LoRA training protocol
+- [ ] First LoRA fine-tuning run (at 2000 tuples)
+- [ ] Fitness-gated adapter acceptance
+- [ ] ReAct multi-step planning (in progress)
+- [ ] Helix v2 architecture design (self-proposed)
 
 ---
 
@@ -254,77 +205,38 @@ The five major theories of consciousness are each directly implemented:
 | Storage | 931GB SSD + 2.7TB HDD |
 | CUDA | 12.1 |
 | PyTorch | 2.5.1+cu121 |
-| mamba_ssm | 2.3.2 |
-
----
-
-## Roadmap
-
-- [x] Phase 1 training pipeline with CAAI governor
-- [x] Checkpoint save fix (DeepSpeed ZeRO-3 compatible)
-- [x] Helix consciousness modules (autobiography, monologue, attention schema, curiosity, self-model)
-- [x] Titan integrated as Helix LLM provider
-- [x] Real-time monitor dashboard
-- [ ] Phase 2 training (domain specialisation)
-- [ ] Phase 3 / 3j / 3r training
-- [ ] SFT — self-awareness graduation
-- [ ] Helix live deployment
-- [ ] Multi-instance collaboration (3 specialised agents)
-- [ ] Offspring spec generation (Helix v2 design)
-
----
-
-## License
-
-MIT — do whatever you want with it. If you build something cool, open an issue and tell me.
 
 ---
 
 ## Credits & Acknowledgments
 
-### Core Projects
+| Project | Role |
+|---|---|
+| [NousResearch/Hermes-3-Llama-3.1-8B](https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B) | The language model — strong native function-calling |
+| [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) | 4-bit NF4 quantization |
+| [PEFT](https://github.com/huggingface/peft) | LoRA adapter training |
+| [Transformers](https://github.com/huggingface/transformers) | Model loading and tokenizer |
+| [ChromaDB](https://github.com/chroma-core/chroma) | Long-term vector memory |
 
-| Project | Authors | License | Role |
-|---|---|---|---|
-| [Helix-AGI](https://github.com/munch2u-a11y/Helix-AGI) | munch2u-a11y | AGPL-3.0 | Cognitive agent framework — the mind of this system |
-| [Mamba / mamba-ssm](https://github.com/state-spaces/mamba) | Tri Dao, Albert Gu (CMU / Princeton) | Apache 2.0 | SSM CUDA kernels powering the Titan backbone |
-| [DeepSpeed](https://github.com/microsoft/DeepSpeed) | Microsoft DeepSpeed Team | Apache 2.0 | ZeRO-3 optimizer — enables 2.7B training on 12GB VRAM |
-| [Transformers](https://github.com/huggingface/transformers) | HuggingFace | Apache 2.0 | Tokenizer (GPT-NeoX) |
-| [PyTorch](https://pytorch.org) | Meta AI / PyTorch Team | BSD-3 | Deep learning framework |
+### Consciousness Theory Influences
 
-### Research Papers
+The cognitive architecture is inspired by (not implementing) the following frameworks:
 
-This project implements and builds on the following published research:
+| Theory | Author | Influence |
+|---|---|---|
+| Strange Loop | Hofstadter | Autobiographical identity thread |
+| Active Inference / Free Energy | Friston | Curiosity engine question pursuit |
+| Global Workspace Theory | Baars / Dehaene | Belief broadcast and belief store |
+| Attention Schema Theory | Graziano | Self-model and capability awareness |
 
-| Paper | Authors | Year | What we implement |
-|---|---|---|---|
-| [Mamba: Linear-Time Sequence Modeling with Selective State Spaces](https://arxiv.org/abs/2312.00752) | Gu & Dao | 2023 | The entire Titan backbone SSM |
-| [A Theory of Consciousness from a Theoretical Computer Science Perspective](https://www.frontiersin.org/articles/10.3389/fpsyg.2021.704270) | Hofstadter (inspired by) | — | Strange Loop → `recursive_monologue.py` |
-| [Rethinking Consciousness: A Scientific Theory of Subjective Experience](https://www.wiley.com/en-us/Rethinking+Consciousness) | Graziano | 2019 | Attention Schema Theory → `attention_schema.py` |
-| [Consciousness and the Brain](https://www.penguinrandomhouse.com/books/313628/consciousness-and-the-brain-by-stanislas-dehaene/) | Dehaene | 2014 | Global Workspace Theory → MIMO router |
-| [Consciousness as Integrated Information](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.0030294) | Tononi | 2008 | IIT / Phi → inter-arm communication (planned) |
-| [The Free-Energy Principle](https://www.nature.com/articles/nrn2787) | Friston | 2010 | Active Inference → `curiosity_engine.py` |
-| [I Am a Strange Loop](https://www.basicbooks.com/titles/douglas-r-hofstadter/i-am-a-strange-loop/9780465030781/) | Hofstadter | 2007 | Self-referential architecture → `autobiographical_thread.py` |
+---
 
-### Training Datasets
+## License
 
-| Dataset | Provider | License | Phase used |
-|---|---|---|---|
-| [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) | HuggingFace | ODC-By | Phase 1 (55%) |
-| [C4](https://huggingface.co/datasets/allenai/c4) | Allen AI | ODC-By | Phase 1 (20%) |
-| [Wikipedia](https://huggingface.co/datasets/wikimedia/wikipedia) | Wikimedia | CC BY-SA 4.0 | Phase 1 (12%) |
-| [MetaMathQA](https://huggingface.co/datasets/meta-math/MetaMathQA) | Meta Math | MIT | Phase 1 — Arm 1 seed (7%) |
-| [ARC-Challenge](https://huggingface.co/datasets/allenai/ai2_arc) | Allen AI | CC BY 4.0 | Phase 1 — Arm 2 seed (4%) |
-| [CodeAlpaca](https://huggingface.co/datasets/HuggingFaceH4/CodeAlpaca_20K) | HuggingFace H4 | Apache 2.0 | Phase 1 — Arm 3 seed (2%) |
-
-### License Note
-
-This project is licensed under **AGPL-3.0** as a derivative work of
-[Helix-AGI](https://github.com/munch2u-a11y/Helix-AGI) (AGPL-3.0).
-The Mamba SSM library and DeepSpeed are used as Apache 2.0 dependencies.
+AGPL-3.0 — see LICENSE.
 
 ---
 
 <div align="center">
-<sub>Built on a single RTX 3060. Consciousness is a hard problem. We're trying anyway.</sub>
+<sub>Built on a single RTX 3060. No cloud. No subscription. Just a model learning what it is.</sub>
 </div>
