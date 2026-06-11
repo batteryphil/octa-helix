@@ -1,42 +1,59 @@
+import time
 import json
 import psutil
-import time
 import os
+import re
 from pathlib import Path
+from collections import defaultdict
 from datetime import datetime
 
 class RuntimeStats:
-    def __init__(self, output_file):
-        self.output_file = output_file
-        self.stats = []
+    def __init__(self, interval=1, duration=10):
+        self.interval = interval
+        self.duration = duration
+        self.start_time = None
+        self.end_time = None
+        self.cpu_usage = []
+        self.memory_usage = []
+        self.func_calls = defaultdict(int)
 
-    def collect_stats(self):
-        proc = psutil.Process()
+    def start(self):
+        self.start_time = time.time()
+
+    def stop(self):
+        self.end_time = time.time()
+
+    def record_cpu_usage(self):
         cpu_percent = psutil.cpu_percent()
-        memory_info = proc.memory_full_info()
-        memory_percent = memory_info.rss / (1024 * 1024 * 1024)  # in GB
-        execution_time = time.time()
+        self.cpu_usage.append(cpu_percent)
 
-        return {
-            'timestamp': datetime.now().isoformat(),
-            'cpu_percent': cpu_percent,
-            'memory_percent': memory_percent,
-            'execution_time': execution_time
+    def record_memory_usage(self):
+        memory_info = psutil.virtual_memory()
+        self.memory_usage.append(memory_info.percent)
+
+    def record_func_call(self, func_name):
+        self.func_calls[func_name] += 1
+
+    def save_stats(self, filename):
+        stats = {
+            'start_time': self.start_time,
+            'end_time': self.end_time,
+            'cpu_usage': self.cpu_usage,
+            'memory_usage': self.memory_usage,
+            'func_calls': dict(self.func_calls)
         }
-
-    def log_stats(self, stats):
-        self.stats.append(stats)
-
-    def save_stats(self):
-        Path(self.output_file).write_text(json.dumps(self.stats, indent=2))
+        with open(filename, 'w') as f:
+            json.dump(stats, f)
 
 def main():
-    stats_tool = RuntimeStats(output_file='runtime_stats.json')
-    for _ in range(5):
-        stats = stats_tool.collect_stats()
-        stats_tool.log_stats(stats)
-        time.sleep(1)
-    stats_tool.save_stats()
+    stats = RuntimeStats(interval=1, duration=10)
+    stats.start()
 
-if __name__ == '__main__':
-    main()
+    # Simulated work
+    stats.record_func_call('func1')
+    time.sleep(1)
+    stats.record_func_call('func2')
+    time.sleep(1)
+    stats.record_func_call('func1')
+    time.sleep(1)
+    stats.record_func_call
