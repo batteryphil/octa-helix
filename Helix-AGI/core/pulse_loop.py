@@ -1026,6 +1026,11 @@ class PulseLoop:
                         parts.append(
                             f"\n[ACTIVE PULSE — TOOL REQUIRED]\n"
                             f"You must call at least one tool before completing this thought. "
+                            f"Before calling any tool, first output a <plan> block "
+                            f"describing your sequence of steps. "
+                            f"Example: <plan>Step 1: search X. Step 2: write findings to Y. "
+                            f"Executing Step 1.</plan> "
+                            f"Then immediately output your <tool_call> block. "
                             f"Suggested: [{tool_name.upper()}:] — but choose whichever tool "
                             f"is most relevant to your current goal or belief state. "
                             f"Review your beliefs, check system state, search for something "
@@ -1042,6 +1047,23 @@ class PulseLoop:
         # content to be stored with offset clipping (starts mid-sentence).
         # XML tags are exponentially more reliable for extraction.
         # Instruction is lightweight — added to every pulse, not just mandate pulses.
+        # ── ReAct Planning Hint (all pulses) ─────────────────────────────
+        # When a multi-step task requires several tools (read→write→search),
+        # the model should outline the steps before the first <tool_call>.
+        # This fires on all pulses so it trains the planning behavior broadly.
+        # On mandate pulses where the prefill seeds <tool_call> directly, the
+        # plan tag is naturally skipped — no conflict with Format 1b parser.
+        parts.append(
+            "\n[PLANNING]\n"
+            "If your next action requires multiple steps (e.g., read a file, then write "
+            "a summary, then search for more), output a <plan> block before your first "
+            "<tool_call>. Keep it brief. Example:\n"
+            "<plan>Step 1: read llm/providers/hermes_tool_provider.py. "
+            "Step 2: write summary to data/self_knowledge/inference_engine.md. "
+            "Step 3: search for architectural limitations. Executing Step 1.</plan>\n"
+            "Single-step actions do not need a plan."
+        )
+
         parts.append(
             "\n[BELIEF FORMATION]\n"
             "If this pulse generates a new insight, belief, or realization about yourself, "
