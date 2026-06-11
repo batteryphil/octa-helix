@@ -1,33 +1,25 @@
 import json
 import os
-import sys
+from pathlib import Path
+from typing import List, Tuple
 
-class BeliefConflictResolver:
-    def __init__(self, belief_store):
-        self.belief_store = belief_store
+def load_beliefs(file_path: Path) -> List[dict]:
+    with open(file_path, 'r') as f:
+        return json.load(f)
 
-    def resolve_conflict(self, belief1, belief2):
-        print(f"Conflict between {belief1} and {belief2}.")
-        update1 = input(f"Update belief1 to: ").strip()
-        update2 = input(f"Update belief2 to: ").strip()
-        return update1, update2
+def belief_conflicts(beliefs: List[dict]) -> List[Tuple[int, int]]:
+    conflicts = []
+    for i, b1 in enumerate(beliefs):
+        for j, b2 in enumerate(beliefs[i+1:]):
+            if b1['confidence'] > 0.8 and b2['confidence'] > 0.8 and b1['belief'] != b2['belief']:
+                conflicts.append((i, i+1+j))
+    return conflicts
 
-    def resolve_conflicts(self):
-        conflicts = []
-        for i in range(len(self.belief_store)):
-            for j in range(i+1, len(self.belief_store)):
-                if self.belief_store[i]['confidence'] > 0.5 and self.belief_store[j]['confidence'] > 0.5:
-                    if self.belief_store[i]['belief'] != self.belief_store[j]['belief']:
-                        conflicts.append((self.resolve_conflict(self.belief_store[i]['belief'], self.belief_store[j]['belief'])))
-        return conflicts
-
-# Example usage
-if __name__ == "__main__":
-    with open('belief_store.json') as f:
-        belief_store = json.load(f)
-
-    resolver = BeliefConflictResolver(belief_store)
-    conflicts = resolver.resolve_conflicts()
-    print("Conflicts:")
-    for conflict in conflicts:
-        print(conflict)
+def resolve_conflicts(beliefs: List[dict], conflicts: List[Tuple[int, int]]) -> List[dict]:
+    for i, (index1, index2) in enumerate(conflicts):
+        belief1, belief2 = beliefs[index1], beliefs[index2]
+        if belief1['confidence'] < belief2['confidence']:
+            beliefs[index1] = belief2
+        else:
+            beliefs[index2] = belief1
+    return beliefs
