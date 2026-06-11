@@ -1,25 +1,33 @@
 import json
-import jsonlines
-import re
+import os
+from pathlib import Path
+from typing import List, Tuple
 
-def load_knowledge_file(file_path):
-    with open(file_path, 'r') as f:
-        return [json.loads(line) for line in f]
+def load_beliefs(filename: str) -> List[dict]:
+    with open(filename, 'r') as f:
+        return json.load(f)
 
-def is_conflicting(a, b):
-    a, b = a['belief'], b['belief']
-    return (a.startswith('not ') and b.lstrip().startswith('not ') and b.lstrip().rstrip(a) != 'not ' + a.lstrip()) or \
-           (not a.startswith('not ') and not b.startswith('not ') and a.lstrip() != b.lstrip())
-
-def find_conflicts(knowledge):
+def belief_conflicts(beliefs: List[dict]) -> List[Tuple[str, str]]:
     conflicts = []
-    for i, a in enumerate(knowledge):
-        for j, b in enumerate(knowledge[i+1:], start=i+1):
-            if is_conflicting(a, b):
-                conflicts.append((a, b))
+    for i, belief1 in enumerate(beliefs):
+        for belief2 in beliefs[i+1:]:
+            if belief1['confidence'] > 0.7 and belief2['confidence'] > 0.7:
+                if belief1['text'].strip().lower() != belief2['text'].strip().lower():
+                    conflicts.append((belief1['id'], belief2['id']))
     return conflicts
 
-if __name__ == '__main__':
-    knowledge = load_knowledge_file('curiosity_knowledge.jsonl')
-    conflicts = find_conflicts(knowledge)
-    print(json.dumps(conflicts, indent=2))
+def reconcile_conflict(conflict: Tuple[str, str]) -> str:
+    belief1_id, belief2_id = conflict
+    belief1 = next(b for b in beliefs if b['id'] == belief1_id)
+    belief2 = next(b for b in beliefs if b['id'] == belief2_id)
+    return f"{belief1['text']} and {belief2['text']} are in conflict"
+
+def main():
+    filename = Path("beliefs.json")
+    beliefs = load_beliefs(filename)
+    conflicts = belief_conflicts(beliefs)
+    for conflict in conflicts:
+        print(reconcile_conflict(conflict))
+
+if __name__ == "__main__":
+    main()
