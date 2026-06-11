@@ -1,16 +1,38 @@
-import os
 import json
 import re
+import pathlib
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
-def extract_last_20_error_logs(log_file: Path) -> List[str]:
-    with open(log_file, 'r') as file:
-        lines = file.readlines()
-    error_lines = [line for line in lines if 'ERROR' in line]
-    return error_lines[-20:]
+def parse_log_entry(entry: str) -> Dict[str, str]:
+    """
+    Parse a single log entry and extract the error message.
+    """
+    error_pattern = re.compile(r"ERROR: (.+)")
+    match = error_pattern.search(entry)
+    if match:
+        return {"error": match.group(1)}
+    return {}
 
-if __name__ == '__main__':
-    log_file = Path('/path/to/helix.log')
-    last_20_errors = extract_last_20_error_logs(log_file)
-    print(json.dumps(last_20_errors, indent=2))
+def summarize_errors(log_path: Path, num_entries: int = 100) -> List[Dict[str, int]]:
+    """
+    Summarize the most recent runtime errors from the log file.
+    """
+    with open(log_path, "r") as file:
+        log_content = file.read()
+    
+    lines = log_content.split("\n")[-num_entries:]
+    errors = (parse_log_entry(line) for line in lines if "ERROR" in line)
+    error_summary = {}
+    for error in errors:
+        error_message = error.get("error")
+        if error_message:
+            error_summary[error_message] = error_summary.get(error_message, 0) + 1
+    
+    return [{"message": k, "count": v} for k, v in error_summary.items()]
+
+if __name__ == "__main__":
+    log_file_path = pathlib.Path("helix.log")
+    num_recent_errors = 10
+    error_summary = summarize_errors(log_file_path, num_recent_errors)
+    print(json.dumps(error_summary, indent=2))
