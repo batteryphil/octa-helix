@@ -1,21 +1,33 @@
 import json
-from pathlib import Path
+import os
+import sys
 
-def resolve_conflict(belief1, belief2):
-    if belief1['confidence'] > belief2['confidence']:
-        return belief1
-    else:
-        return belief2
+class BeliefConflictResolver:
+    def __init__(self, belief_store):
+        self.belief_store = belief_store
 
-def resolve_conflict_resolver(belief_store):
-    resolved_store = {}
-    for topic, beliefs in belief_store.items():
-        resolved_beliefs = []
-        for belief in beliefs:
-            conflicting_beliefs = [b for b in beliefs if b['id'] != belief['id'] and b['conflict_with'] == belief['id']]
-            if conflicting_beliefs:
-                most_confident = max(conflicting_beliefs, key=lambda b: b['confidence'])
-                resolved_beliefs.append(resolve_conflict(belief, most_confident))
-            else:
-                resolved_beliefs.append(belief)
-        resolved_store[topic] = resolved_beliefs
+    def resolve_conflict(self, belief1, belief2):
+        print(f"Conflict between {belief1} and {belief2}.")
+        update1 = input(f"Update belief1 to: ").strip()
+        update2 = input(f"Update belief2 to: ").strip()
+        return update1, update2
+
+    def resolve_conflicts(self):
+        conflicts = []
+        for i in range(len(self.belief_store)):
+            for j in range(i+1, len(self.belief_store)):
+                if self.belief_store[i]['confidence'] > 0.5 and self.belief_store[j]['confidence'] > 0.5:
+                    if self.belief_store[i]['belief'] != self.belief_store[j]['belief']:
+                        conflicts.append((self.resolve_conflict(self.belief_store[i]['belief'], self.belief_store[j]['belief'])))
+        return conflicts
+
+# Example usage
+if __name__ == "__main__":
+    with open('belief_store.json') as f:
+        belief_store = json.load(f)
+
+    resolver = BeliefConflictResolver(belief_store)
+    conflicts = resolver.resolve_conflicts()
+    print("Conflicts:")
+    for conflict in conflicts:
+        print(conflict)
