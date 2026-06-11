@@ -6,15 +6,11 @@ def check_system_health():
     vram_usage = psutil.virtual_memory().used / (1024 * 1024 * 1024)
     
     if cpu_usage > 80:
-        return 'cpu_high'
+        return "alert: CPU usage exceeds 80% - current usage: {}%".format(cpu_usage)
     elif vram_usage > 10:
-        return 'vram_high'
+        return "alert: VRAM usage exceeds 10GB - current usage: {}GB".format(vram_usage)
     else:
-        return 'ok'
-
-def main():
-    health_status = check_system_health()
-    print(json.dumps({'status': health_status}))
+        return "ok"
 
 if __name__ == '__main__':
-    main()
+    print(check_system_health())
