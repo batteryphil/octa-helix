@@ -520,7 +520,8 @@ def setup_helix(data_dir: str = "data"):
             thought = getattr(context, 'thought', None) or str(context)
             intervention = gov.observe(thought)
             if intervention:
-                logger.warning(f"Governor fired on: {intervention}")
+                import logging as _logging
+                _logging.getLogger("helix.core.governor").warning(f"Governor fired on: {intervention}")
             # Late-wire the provider on first pulse if not done at boot
             if gov._provider is None and pulse_loop._chat:
                 gov.set_provider(pulse_loop._chat)
