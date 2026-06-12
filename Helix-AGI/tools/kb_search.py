@@ -3,24 +3,25 @@ import jsonlines
 import re
 from pathlib import Path
 
-def search_knowledge(query):
-    with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
-        results = []
-        for line in f:
-            entry = json.loads(line)
-            if query.lower() in entry['title'].lower() or query.lower() in entry['content'].lower():
-                results.append(entry)
-                if len(results) >= 3:
-                    break
-        return results
+def load_curiosity_knowledge():
+    file_path = Path(__file__).parent / "curiosity_knowledge.jsonl"
+    with file_path.open() as file:
+        return [json.load(file) for line in file]
 
-def main():
-    query = input("Enter a search query: ")
-    results = search_knowledge(query)
-    print(f"Top 3 relevant knowledge base entries for '{query}':")
-    for i, result in enumerate(results, start=1):
-        print(f"{i}. {result['title']}")
-        print(f"   {result['content']}")
+def calculate_relevance(query, entry):
+    words = set(query.lower().split())
+    entry_words = set(entry['title'].lower().split() + entry['content'].split())
+    return len(words & entry_words)
+
+def search_knowledge(query):
+    knowledge = load_curiosity_knowledge()
+    return sorted(knowledge, key=lambda entry: calculate_relevance(query, entry), reverse=True)[:3]
 
 if __name__ == '__main__':
-    main()
+    query = "What is the capital of France?"
+    results = search_knowledge(query)
+    for i, result in enumerate(results, 1):
+        print(f"Result {i}:")
+        print(f"Title: {result['title']}")
+        print(f"Content: {result['content']}")
+        print()
