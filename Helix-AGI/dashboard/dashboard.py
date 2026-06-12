@@ -286,6 +286,8 @@ def read_status() -> Dict[str, Any]:
     omega = 0.5
     pulse = 0
     state = "UNKNOWN"
+    ts = 0
+    pid = 0
     STATUS_FILE = BASE_DIR / "data" / "status.json"
     if STATUS_FILE.exists():
         try:
@@ -293,6 +295,8 @@ def read_status() -> Dict[str, Any]:
                 heartbeat = json.load(f)
             state = heartbeat.get("state", "UNKNOWN")
             pulse = heartbeat.get("pulse", 0)
+            ts    = heartbeat.get("ts", 0)
+            pid   = heartbeat.get("pid", 0)
         except Exception:
             pass
 
@@ -330,6 +334,8 @@ def read_status() -> Dict[str, Any]:
         "gamma": gamma,
         "pulse": pulse,
         "state": state,
+        "ts": ts,
+        "pid": pid,
     }
 
 

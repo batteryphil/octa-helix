@@ -614,10 +614,13 @@ class PulseLoop:
         """
         try:
             import json as _json
+            import time as _time
             Path("data").mkdir(exist_ok=True)
             Path("data/status.json").write_text(_json.dumps({
                 "state": self._state,
                 "pulse": self._pulse_count,
+                "ts": _time.time(),          # Unix timestamp for staleness detection
+                "pid": __import__("os").getpid(),
             }))
         except Exception:
             pass

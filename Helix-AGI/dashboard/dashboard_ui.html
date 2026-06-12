@@ -34,8 +34,51 @@
     background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.3);
   }
   .status-badge.dormant { background: rgba(100,116,139,0.15); color: var(--dim); border-color: rgba(100,116,139,0.3); }
-  .status-badge.active { background: rgba(59,130,246,0.15); color: var(--accent); border-color: rgba(59,130,246,0.3); }
-  .pulse-count { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--dim); margin-left: auto; }
+  .status-badge.active  { background: rgba(59,130,246,0.15);  color: var(--accent); border-color: rgba(59,130,246,0.3); }
+  .status-badge.resting { background: rgba(74,222,128,0.12);  color: var(--green);  border-color: rgba(74,222,128,0.25); }
+  .status-badge.regular { background: rgba(251,191,36,0.15);  color: var(--gold);   border-color: rgba(251,191,36,0.3); }
+  .pulse-count { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--dim); }
+
+  /* ── Health indicator ── */
+  .health-block {
+    margin-left: auto; display: flex; align-items: center; gap: 10px;
+  }
+  .health-dot {
+    width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+    background: var(--dim);
+  }
+  .health-dot.alive {
+    background: #22c55e;
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.7);
+    animation: pulse-alive 2s ease-in-out infinite;
+  }
+  .health-dot.stale {
+    background: var(--gold);
+    box-shadow: 0 0 6px rgba(251,191,36,0.6);
+  }
+  .health-dot.crashed {
+    background: var(--red);
+    box-shadow: 0 0 0 0 rgba(248,113,113,0.7);
+    animation: pulse-crashed 0.8s ease-in-out infinite;
+  }
+  @keyframes pulse-alive {
+    0%   { box-shadow: 0 0 0 0   rgba(34,197,94,0.7); }
+    70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0);   }
+    100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);   }
+  }
+  @keyframes pulse-crashed {
+    0%,100% { opacity: 1; }
+    50%     { opacity: 0.3; }
+  }
+  .health-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.3;
+  }
+  .health-label .health-status { font-weight: 600; }
+  .health-label .health-status.alive   { color: #22c55e; }
+  .health-label .health-status.stale   { color: var(--gold); }
+  .health-label .health-status.crashed { color: var(--red); }
+  .health-label .health-status.unknown { color: var(--dim); }
+  .health-label .health-ago { font-size: 10px; color: var(--dim); display: block; }
 
   .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -228,6 +271,14 @@
   <h1>HELIX COGNITIVE DASHBOARD</h1>
   <span id="state-badge" class="status-badge">UNKNOWN</span>
   <span class="pulse-count">Pulse <span id="pulse-num">—</span></span>
+  <!-- ── Health indicator ── -->
+  <div class="health-block">
+    <div id="health-dot" class="health-dot"></div>
+    <div class="health-label">
+      <span id="health-status" class="health-status unknown">UNKNOWN</span>
+      <span id="health-ago" class="health-ago">no heartbeat yet</span>
+    </div>
+  </div>
 </header>
 <div class="main">
   <!-- Log Panel -->
@@ -503,6 +554,35 @@ function updateGauges(data) {
   const badge = document.getElementById('state-badge');
   badge.textContent = data.state;
   badge.className = 'status-badge ' + (data.state || '').toLowerCase();
+
+  // ── Health indicator ──
+  const dot    = document.getElementById('health-dot');
+  const hstat  = document.getElementById('health-status');
+  const hago   = document.getElementById('health-ago');
+  const now    = Date.now() / 1000;
+  const ts     = data.ts || 0;
+  const ageSec = ts > 0 ? Math.floor(now - ts) : -1;
+
+  let level, labelText, agoText;
+  if (ts === 0) {
+    level = 'unknown'; labelText = 'UNKNOWN'; agoText = 'no heartbeat file';
+  } else if (ageSec < 180) {          // < 3 min  → alive
+    level = 'alive';   labelText = 'ALIVE';
+    const m = Math.floor(ageSec / 60), s = ageSec % 60;
+    agoText = m > 0 ? `${m}m ${s}s ago` : `${s}s ago`;
+  } else if (ageSec < 600) {          // 3–10 min → stale / busy
+    level = 'stale';   labelText = 'SLOW';
+    agoText = `${Math.floor(ageSec/60)}m ago — may be busy`;
+  } else {                            // > 10 min → crashed
+    level = 'crashed'; labelText = 'CRASHED';
+    const mins = Math.floor(ageSec / 60);
+    agoText = `last seen ${mins}m ago`;
+  }
+
+  dot.className   = 'health-dot ' + level;
+  hstat.className = 'health-status ' + level;
+  hstat.textContent = labelText;
+  hago.textContent  = agoText;
 
   const catList = document.getElementById('cat-list');
   catList.innerHTML = '';
