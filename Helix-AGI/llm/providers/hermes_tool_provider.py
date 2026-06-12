@@ -460,26 +460,28 @@ class HermesToolSession:
         self._trim_history()
 
 
-        # Determine token budget:
-        # autonomous pulses get 200 tokens (background thinking, no deep tool chains)
-        # mandate pulses get 400 tokens (must leave room for tool_call XML block)
-        # user tasks get the full MAX_NEW_TOKENS budget
+        # ── Pulse classification ─────────────────────────────────────────────
         is_autonomous_pulse = not bool(
             re.search(r'They said:|User message:|User:', message, re.IGNORECASE)
             or re.search(r'["\u201c].{10,}["\u201d]', message)
         )
-        # Detect if this is a mandated tool-use pulse (added by pulse_loop.py)
+        # Detect mandated tool-use pulses injected by pulse_loop.py.
+        # Matches both [ACTION REQUIRED] (standard) and [INTROSPECTION PULSE] (Q15).
         is_mandate_pulse = bool(
-            re.search(r'\[ACTIVE PULSE.*TOOL REQUIRED\]|\[INTROSPECTION PULSE', message)
+            re.search(r'\[ACTION REQUIRED|\[INTROSPECTION PULSE', message)
         )
-        if is_mandate_pulse:
-            token_budget = 400   # extra room for tool_call XML block
-        elif is_autonomous_pulse:
-            token_budget = 200   # background thinking
-        else:
-            token_budget = 512   # user responses
 
-        logger.warning(f"HERMES send_message: is_autonomous={is_autonomous_pulse}, budget={token_budget}, user_text={user_text[:60]!r}")
+        # Token budgets:
+        #   THINK phase (autonomous):  100 tok — plan only, no tool schema
+        #   ACT  phase (autonomous):   200 tok — tool call, with schema
+        #   User responses:            512 tok — full prose
+        think_budget = 100
+        act_budget   = 200
+        token_budget = 512 if not is_autonomous_pulse else act_budget  # legacy path for loop
+
+        logger.warning(f"HERMES send_message: is_autonomous={is_autonomous_pulse}, "
+                       f"mandate={is_mandate_pulse}, budget=think{think_budget}+act{act_budget}, "
+                       f"user_text={user_text[:60]!r}")
 
         # Clear tool call log for this pulse
         self._last_tool_calls = []
@@ -487,16 +489,49 @@ class HermesToolSession:
         clean = self._sanitize(self._history)
         messages = [{"role": "system", "content": self._system}] + clean
 
-        # Convert tool declarations to OpenAI-compatible format for Hermes template.
-        # CRITICAL FIX: autonomous mandate pulses MUST receive tool schemas.
-        # Previously, all autonomous pulses got openai_tools=None, meaning the model
-        # could NEVER see tool definitions and therefore could never make tool calls,
-        # regardless of text instructions. Now: mandate pulses get tools, regular
-        # autonomous pulses stay lightweight (no tools = faster, less VRAM).
-        if not is_autonomous_pulse or is_mandate_pulse:
-            openai_tools = self._gemini_to_openai_tools()
-        else:
-            openai_tools = None  # Non-mandate autonomous: lightweight, no tool schema
+        # ── Phase 1: THINK (autonomous pulses only) ───────────────────────────
+        # Small budget, greedy, NO tool schema.
+        # Model writes its plan/intention naturally without competing with tool
+        # call JSON for token budget.  The output is then injected as assistant
+        # context before Phase 2 so the model knows what it just decided to do.
+        think_text = ""
+        if is_autonomous_pulse:
+            try:
+                think_prompt = self._tokenizer.apply_chat_template(
+                    messages,          # no tools= → model writes prose only
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                think_ids = self._tokenizer(
+                    think_prompt, return_tensors="pt"
+                ).input_ids.to(self._device)
+                with torch.no_grad():
+                    think_out = self._model.generate(
+                        think_ids,
+                        max_new_tokens=think_budget,
+                        do_sample=False,          # greedy — deterministic plan
+                        pad_token_id=self._tokenizer.eos_token_id,
+                    )
+                think_text = self._tokenizer.decode(
+                    think_out[0][think_ids.shape[1]:], skip_special_tokens=True
+                ).strip()
+                logger.warning(f"HERMES THINK: {think_text[:200]!r}")
+
+                # Inject plan as assistant context before ACT phase
+                if think_text:
+                    messages.append({"role": "assistant", "content": think_text})
+                    messages.append({
+                        "role": "user",
+                        "content": "Now execute your plan by calling the appropriate tool.",
+                    })
+            except Exception as _te:
+                logger.warning(f"HERMES THINK phase error: {_te}")
+
+        # ── Tool schema for ACT phase ─────────────────────────────────────────
+        # ALL autonomous pulses now get the tool schema in the ACT phase so the
+        # model can call any tool (not just mandate-forced search).
+        # Non-autonomous (user) pulses were already getting the schema.
+        openai_tools = self._gemini_to_openai_tools()
 
         # Full tool-calling loop for real user tasks
         final_response = ""

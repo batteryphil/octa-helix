@@ -1044,40 +1044,43 @@ class PulseLoop:
 
                     # Every 15th pulse: introspection mandate (Q15 peer review)
                     if self._pulse_count % 15 == 0:
+                        # Introspection: only suggest tools that actually exist
                         introspection_tools = [t for t in available if any(
                             k in t.lower() for k in
-                            ["fitness", "system_health", "behavior", "curiosity_tracker",
-                             "metrics", "health", "performance", "self"]
+                            ["fitness", "behavior", "curiosity", "metric",
+                             "note", "memory", "journal"]
                         )]
                         tool_name = random.choice(introspection_tools) if introspection_tools \
                             else random.choice(available)
                         parts.append(
                             f"\n[INTROSPECTION PULSE — SELF-MONITORING REQUIRED]\n"
-                            f"This is a scheduled self-examination pulse. You MUST call an "
-                            f"introspection tool before completing this thought. "
-                            f"Suggested: [{tool_name.upper()}:] "
-                            f"Check your own system health, fitness trend, or behavioral patterns. "
-                            f"What is your current state? What is working? What needs attention? "
-                            f"Do not complete this pulse with prose only."
+                            f"Examine your recent behavior and fitness. "
+                            f"You MUST call a tool before finishing. "
+                            f"Suggested: {tool_name}. "
+                            f"What is working? What needs attention?"
                         )
                     else:
-                        # Standard mandate — prefer actionable self-monitoring tools
+                        # Standard mandate: prefer actionable tools
                         preferred = [t for t in available if any(
                             k in t.lower() for k in
-                            ["health", "search", "note", "task", "belief", "memory",
-                             "system", "metric", "novelty", "error", "url"]
+                            ["search", "note", "task", "belief", "memory",
+                             "metric", "novelty", "url", "read", "write", "journal"]
                         )]
                         tool_name = random.choice(preferred) if preferred else random.choice(available)
                         parts.append(
                             f"\n[ACTION REQUIRED: call a tool now]\n"
-                            f"Think: what is my goal? What tool serves it best?\n"
-                            f"If multi-step: <plan>Step 1: X. Step 2: Y. Now doing Step 1.</plan>\n"
-                            f"Then call the tool. Suggested: {tool_name} — but use whatever fits."
+                            f"What is the most useful thing to do given recent events?\n"
+                            f"Plan briefly, then call the right tool. Suggested: {tool_name}."
                         )
                 else:
                     logger.warning("[pulse] Tool mandate: registry returned empty tool list")
             except Exception as _e:
                 logger.warning(f"[pulse] Tool mandate failed: {_e}")
+        else:
+            # Non-mandate pulse: single inline nudge, not a heading.
+            # The THINK phase will see this and write an intention naturally;
+            # the ACT phase then calls a tool to execute it.
+            parts.append("\nThink about your next useful action, then act on it.")
 
         # ── XML Belief Tag Instruction (Q13 peer review) ──────────────────────
         # Regex extraction on unstructured prose is brittle and causes belief
