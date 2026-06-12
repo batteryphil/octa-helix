@@ -908,6 +908,7 @@ class PulseLoop:
         #     track tokens. Use history char count as a reliable fallback.
         #     At 4 chars/token, 120,000 chars ≈ 30k tokens — safe for 12GB VRAM.
         #     Only triggers when not ACTIVE (avoid interrupting user conversations).
+        _oom_reset_fired = False
         if self._chat and hasattr(self._chat, 'get_history_size'):
             _history_chars = self._chat.get_history_size()
             _CHAR_LIMIT = 120_000
@@ -917,6 +918,9 @@ class PulseLoop:
                     f"(limit {_CHAR_LIMIT:,}) — auto-resetting session"
                 )
                 self._reset_session("oom_prevention")
+                # Clear any pending tool-triggered reset — session already fresh
+                self._pending_context_reset = False
+                _oom_reset_fired = True
 
         # Write state heartbeat every 10 pulses for dashboard state tracking
         if self._pulse_count % 10 == 0:
@@ -980,18 +984,20 @@ class PulseLoop:
         # Helix was rewriting the same tool files 20-29x because it lost track
         # of what it had already built when the context window cycled. Showing
         # the current toolset on every pulse shifts it from creation→invocation.
+        #
+        # FIX: Use registry.get_tool_names() instead of filesystem scan.
+        # The filesystem has 50+ .py files including SIE-written tools that are
+        # NOT in the ToolRegistry and cannot be called. Listing them causes the
+        # model to attempt calls that fail silently → search attractor loops.
         try:
-            import os as _os
-            _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "tools")
-            _tool_names = sorted(
-                f[:-3] for f in _os.listdir(_tools_dir)
-                if f.endswith(".py") and not f.startswith("_")
-                and f not in ("tool_executor.py", "tool_declarations.py",
-                              "tool_registry.py", "tool_health_check.py")
-            )
+            from tools.tool_registry import registry as _registry
+            _tool_names = sorted(_registry.get_tool_names())
+            if not _tool_names:
+                # Registry not yet populated (early startup) — skip mandate
+                raise ValueError("empty registry")
             if _tool_names:
                 parts.append(
-                    f"ACTIVE TOOLKIT ({len(_tool_names)} tools): "
+                    f"ACTIVE TOOLKIT ({len(_tool_names)} callable tools): "
                     + ", ".join(_tool_names[:30])  # cap at 30 to limit tokens
                     + (" …" if len(_tool_names) > 30 else "")
                 )

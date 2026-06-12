@@ -8,7 +8,7 @@ The Problem: Current small-scale models lack the instruction-following capacity 
 
 The Solution (Proposed Workflow):
 1. Direct Telemetry via Hooks: Utilize torch.nn.Module.register_forward_hook to intercept hidden states from the Mamba SSM blocks.
-2. Entropy Extraction: Calculate the internal "Internal Weather" (\Omega) by computing the Shannon entropy of the latent state distributions. This bypasses the need for the model to "speak" its own state, preventing hallucinated math.
+2. Entropy Extraction: Calculate the internal "Internal Weather" (\Omegamega) by computing the Shannon entropy of the latent state distributions. This bypasses the need for the model to "speak" its own state, preventing hallucinated math.
 3. Manifold Projection: Implement a lightweight W \in \mathbb{R}^{d_model \times 8} projection layer to map high-dimensional latent states directly into the 8D coordinate space required by the Helix manifold.
 4. Decoupled State Board: Refactor state_board.py to accept input via a high-frequency telemetry stream (Python Queue or SharedMemory) rather than regex-parsing model text output.
 
