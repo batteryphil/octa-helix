@@ -4,18 +4,18 @@ import os
 
 def check_system_health():
     cpu_usage = psutil.cpu_percent()
-    vram_usage = psutil.virtual_memory().total - psutil.virtual_memory().available
-
+    vram_usage = psutil.virtual_memory().used / (1024 * 1024 * 1024)
+    
     if cpu_usage > 80:
-        return "alert"
-    elif vram_usage > 10 * 1024 * 1024 * 1024:  # 10 GB in bytes
-        return "alert"
+        return 'cpu_high'
+    elif vram_usage > 10:
+        return 'vram_high'
     else:
-        return "ok"
+        return 'ok'
 
 def main():
     health_status = check_system_health()
-    print(json.dumps({"system_health": health_status}))
+    print(json.dumps({'status': health_status}))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
