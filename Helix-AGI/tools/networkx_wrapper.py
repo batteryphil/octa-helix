@@ -2,25 +2,24 @@ import json
 import jsonlines
 from networkx import DiGraph
 
-class NetworkxWrapper:
-    def __init__(self, jsonl_file_path):
-        self.graph = DiGraph()
-        with jsonlines.open(jsonl_file_path) as f:
-            for line in f:
-                node, neighbors = line.strip().split('\t', 1)
-                neighbors = neighbors.split('\t')
-                self.graph.add_node(node)
-                self.graph.add_edges_from([(node, n) for n in neighbors])
+def jsonl_to_digraph(file_path):
+    graph = DiGraph()
+    with jsonlines.open(file_path) as reader:
+        for line in reader:
+            data = json.loads(line)
+            node = data['node']
+            edges = data['edges']
+            graph.add_node(node)
+            for edge in edges:
+                graph.add_edge(node, edge['target'])
+    return graph
 
-    def get_neighbors(self, node):
-        return self.graph.neighbors(node)
-
-def main():
-    jsonl_file_path = 'path/to/graph.jsonl'
-    wrapper = NetworkxWrapper(jsonl_file_path)
-    node = 'example_node'
-    neighbors = wrapper.get_neighbors(node)
-    print(f"Neighbors of {node}: {neighbors}")
+def get_neighbors(graph, node):
+    return list(graph.successors(node))
 
 if __name__ == '__main__':
-    main()
+    file_path = 'example.jsonl'
+    graph = jsonl_to_digraph(file_path)
+    node = 'A'
+    neighbors = get_neighbors(graph, node)
+    print(f"Neighbors of {node}: {neighbors}")
