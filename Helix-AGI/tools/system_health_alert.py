@@ -3,19 +3,29 @@ import json
 import os
 
 def check_system_health():
+    memory_usage = psutil.virtual_memory()
+    memory_info = {
+        'memory_total': memory_usage.total,
+        'memory_available': memory_usage.available,
+        'memory_percent': memory_usage.percent,
+        'memory_used': memory_usage.used
+    }
+    
     cpu_usage = psutil.cpu_percent()
-    vram_usage = psutil.virtual_memory().total - psutil.virtual_memory().available
-
-    if cpu_usage > 80:
-        return "cpu_high"
-    elif vram_usage > 10 * 1024 * 1024 * 1024:  # 10 GB in bytes
-        return "mem_high"
+    memory_info['cpu_percent'] = cpu_usage
+    
+    if memory_info['memory_percent'] > 90:
+        memory_info['status'] = 'critical'
+    elif memory_info['memory_percent'] > 80:
+        memory_info['status'] = 'warning'
     else:
-        return "ok"
+        memory_info['status'] = 'ok'
+    
+    return memory_info
 
 def main():
-    health_status = check_system_health()
-    print(json.dumps({"status": health_status}))
+    health_info = check_system_health()
+    print(json.dumps(health_info, indent=2))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
