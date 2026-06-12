@@ -4,29 +4,29 @@ import pathlib
 import subprocess
 import sys
 
-def import_tools():
-    tools = []
-    for tool_name in os.listdir('tools'):
-        if tool_name.startswith('_') or tool_name.endswith('_'):
-            continue
-        if tool_name == 'tool_health_check.py':
-            continue
-        tools.append(tool_name)
-    return tools
-
-def run_tool(tool_name):
+def run_tool(tool_name, tool_module):
     try:
-        result = subprocess.run([sys.executable, f'tools/{tool_name}', '--help'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return result.returncode == 0
+        module = __import__(tool_module)
+        result = module.check_function()
+        return result
     except Exception as e:
-        return False
+        return f"Failed to run {tool_name}: {str(e)}"
+
+def check_tool_health():
+    tools_dir = pathlib.Path(__file__).parent / "tools"
+    health_report = {}
+
+    for tool_name in os.listdir(tools_dir):
+        if tool_name.endswith(".py") and tool_name != "tool_health_check.py":
+            tool_path = tools_dir / tool_name
+            tool_module = f"tools.{tool_name[:-3]}"
+            health_report[tool_name] = run_tool(tool_name, tool_module)
+
+    return health_report
 
 def main():
-    tool_health = {}
-    for tool_name in import_tools():
-        is_healthy = run_tool(tool_name)
-        tool_health[tool_name] = is_healthy
-    print(json.dumps(tool_health, indent=2))
+    health_status = check_tool_health()
+    print(json.dumps(health_status, indent=2))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
