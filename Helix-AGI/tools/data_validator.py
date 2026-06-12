@@ -1,39 +1,45 @@
 import json
-import requests
-from bs4 import BeautifulSoup
-import re
-import pathlib
+import jsonlines
+import os
+import sys
 
-def validate_data(data_source, knowledge_base_url):
-    response = requests.get(knowledge_base_url)
-    knowledge_base = json.loads(response.text)
+def validate_jsonl(file_path):
+    if not os.path.exists(file_path):
+        return "File does not exist", False
+    
+    with open(file_path, "r") as f:
+        try:
+            for line in f:
+                jsonlines.loads(line)
+            return "File structure and content validated", True
+        except json.JSONDecodeError:
+            return "JSONL file structure invalid", False
 
-    for item in data_source:
-        if item['name'] in knowledge_base:
-            if item['value'] == knowledge_base[item['name']]:
-                item['valid'] = True
-            else:
-                item['valid'] = False
-                item['discrepancy'] = f"Discrepancy found: {knowledge_base[item['name']]}"
-        else:
-            item['valid'] = False
-            item['discrepancy'] = "Item not found in knowledge base"
+def validate_json(file_path):
+    if not os.path.exists(file_path):
+        return "File does not exist", False
+    
+    with open(file_path, "r") as f:
+        try:
+            json.load(f)
+            return "File structure and content validated", True
+        except json.JSONDecodeError:
+            return "JSON file structure invalid", False
 
-    return data_source
+def data_validator(file_path):
+    if file_path.suffix == ".jsonl":
+        return validate_jsonl(file_path)
+    elif file_path.suffix == ".json":
+        return validate_json(file_path)
+    else:
+        return f"Unsupported file type: {file_path.suffix}", False
 
-def main():
-    data_source = [
-        {"name": "population", "value": "33000000"},
-        {"name": "capital", "value": "New York"},
-        {"name": "language", "value": "English"}
-    ]
-
-    knowledge_base_url = "https://example.com/knowledge_base.json"
-
-    validated_data = validate_data(data_source, knowledge_base_url)
-
-    for item in validated_data:
-        print(f"{item['name']}: {'Valid' if item['valid'] else 'Invalid'} - {item['discrepancy']}")
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python data_validator.py <file_path>")
+        sys.exit(1)
+    
+    file_path = pathlib.Path(sys.argv[1])
+    result, valid = data_validator(file_path)
+    print(result)
+    sys.exit(valid)
