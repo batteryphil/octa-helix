@@ -6,45 +6,47 @@ import jsonlines
 import pathlib
 import psutil
 import time
+from typing import List, Dict
 
-def fetch_and_parse(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    paragraphs = soup.find_all('p')
-    knowledge = []
-    for p in paragraphs:
-        text = p.text.strip()
-        if text:
-            knowledge.append(text)
-    return knowledge
+def fetch_articles(urls: List[str]) -> List[str]:
+    articles = []
+    for url in urls:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.find_all('p')
+        article = '\n'.join([p.text for p in paragraphs])
+        articles.append(article)
+    return articles
 
-def filter_and_format(knowledge):
-    filtered_knowledge = []
-    for item in knowledge:
-        item = re.sub(r'\s+', ' ', item)
-        item = re.sub(r'[^a-zA-Z0-9\s]', '', item)
-        item = item.strip()
-        if item:
-            filtered_knowledge.append(item)
-    return filtered_knowledge
+def filter_articles(articles: List[str], heuristics: List[str]) -> List[str]:
+    filtered_articles = []
+    for article in articles:
+        for heuristic in heuristics:
+            if re.search(heuristic, article):
+                filtered_articles.append(article)
+                break
+    return filtered_articles
 
-def save_to_file(knowledge, file_path):
+def save_to_file(articles: List[str], file_path: str):
     with jsonlines.open(file_path, mode='a') as f:
-        for item in knowledge:
-            f.write(item + '\n')
+        for article in articles:
+            f.write(article)
 
 def main():
-    urls = [
+    sources = [
         'https://example.com/source1',
         'https://example.com/source2',
         # Add more trusted sources here
     ]
-    knowledge = []
-    for url in urls:
-        new_knowledge = fetch_and_parse(url)
-        knowledge.extend(filter_and_parse(new_knowledge))
-    save_to_file(knowledge, 'curiosity_knowledge.jsonl')
-    print(f"Updated knowledge base with {len(knowledge)} new items.")
+    heuristics = [
+        r'example_heuristic1',
+        r'example_heuristic2',
+        # Add more heuristics here
+    ]
+    
+    articles = fetch_articles(sources)
+    filtered_articles = filter_articles(articles, heuristics)
+    save_to_file(filtered_articles, 'curiosity_knowledge.jsonl')
 
 if __name__ == '__main__':
     main()
