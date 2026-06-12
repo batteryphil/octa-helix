@@ -1,24 +1,25 @@
 import json
-from pathlib import Path
+from datetime import datetime
+from typing import List, Dict
 
-def resolve_conflict(conflicting_beliefs):
-    merged_belief = {}
-    for belief in conflicting_beliefs:
-        for key, value in belief.items():
-            if key not in merged_belief or merged_belief[key] in ({}, None):
-                merged_belief[key] = value
-            else:
-                if isinstance(merged_belief[key], list):
-                    merged_belief[key].append(value)
-                else:
-                    merged_belief[key] = [merged_belief[key], value]
-    return merged_belief
+class Belief:
+    def __init__(self, text: str, confidence: float, timestamp: str):
+        self.text = text
+        self.confidence = confidence
+        self.timestamp = datetime.fromisoformat(timestamp)
 
-def main():
-    with open(Path(__file__).with_name() / 'belief_conflict.json') as file:
-        conflicting_beliefs = json.load(file)
-    resolved_belief = resolve_conflict(conflicting_beliefs)
-    print(json.dumps(resolved_belief, indent=2))
+    def __lt__(self, other: 'Belief'):
+        return self.timestamp > other.timestamp
 
-if __name__ == '__main__':
-    main()
+def resolve_conflicts(beliefs: List[Dict]) -> List[str]:
+    resolved = {}
+    for belief in sorted(beliefs, key=lambda b: (-b['confidence'], b['timestamp'])):
+        key = belief['key']
+        if key not in resolved:
+            resolved[key] = belief
+        else:
+            if belief['confidence'] > resolved[key]['confidence'] or \
+               (belief['confidence'] == resolved[key]['confidence'] and
+                resolved[key]['timestamp'] > belief['timestamp']):
+                resolved[key] = belief
+    return list(resolved.values())
