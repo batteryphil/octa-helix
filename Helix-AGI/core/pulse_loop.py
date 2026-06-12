@@ -1024,18 +1024,10 @@ class PulseLoop:
                         )]
                         tool_name = random.choice(preferred) if preferred else random.choice(available)
                         parts.append(
-                            f"\n[ACTIVE PULSE — TOOL REQUIRED]\n"
-                            f"You must call at least one tool before completing this thought. "
-                            f"Before calling any tool, first output a <plan> block "
-                            f"describing your sequence of steps. "
-                            f"Example: <plan>Step 1: search X. Step 2: write findings to Y. "
-                            f"Executing Step 1.</plan> "
-                            f"Then immediately output your <tool_call> block. "
-                            f"Suggested: [{tool_name.upper()}:] — but choose whichever tool "
-                            f"is most relevant to your current goal or belief state. "
-                            f"Review your beliefs, check system state, search for something "
-                            f"you're curious about, or validate a hypothesis. "
-                            f"Do not complete this pulse with prose only."
+                            f"\n[ACTION REQUIRED: call a tool now]\n"
+                            f"Think: what is my goal? What tool serves it best?\n"
+                            f"If multi-step: <plan>Step 1: X. Step 2: Y. Now doing Step 1.</plan>\n"
+                            f"Then call the tool. Suggested: {tool_name} — but use whatever fits."
                         )
                 else:
                     logger.warning("[pulse] Tool mandate: registry returned empty tool list")
