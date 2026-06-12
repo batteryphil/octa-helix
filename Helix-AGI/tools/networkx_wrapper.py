@@ -1,13 +1,28 @@
 import json
+import jsonlines
 import networkx as nx
-from pathlib import Path
 
-def get_neighbors(graph_file, node):
-    G = nx.readwrite.jsonl_graph(graph_file)
-    return list(G.neighbors(node))
+def load_jsonl_to_digraph(file_path):
+    G = nx.DiGraph()
+    with jsonlines.open(file_path) as f:
+        for line in f:
+            data = json.loads(line)
+            node = data['node']
+            neighbors = data.get('neighbors', [])
+            G.add_node(node)
+            for neighbor in neighbors:
+                G.add_edge(node, neighbor)
+    return G
+
+def get_neighbors(G, node):
+    return list(G.successors(node))
+
+def main():
+    file_path = 'path/to/your/jsonl/file'
+    G = load_jsonl_to_digraph(file_path)
+    node = 'example_node'
+    neighbors = get_neighbors(G, node)
+    print(f"Neighbors of {node}: {neighbors}")
 
 if __name__ == '__main__':
-    graph_file = 'path/to/graph.jsonl'
-    node = 'node_id'
-    neighbors = get_neighbors(graph_file, node)
-    print(neighbors)
+    main()
