@@ -7,9 +7,9 @@ def check_system_health():
     vram_usage = psutil.virtual_memory().used / (1024 * 1024 * 1024)
     
     if cpu_usage > 80:
-        return "cpu_high"
+        return "CPU usage exceeds 80%: {:.2f}%".format(cpu_usage)
     elif vram_usage > 10:
-        return "memory_high"
+        return "VRAM usage exceeds 10GB: {:.2f}GB".format(vram_usage)
     else:
         return "ok"
 
