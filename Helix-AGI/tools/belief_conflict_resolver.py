@@ -1,25 +1,19 @@
 import json
-from datetime import datetime
-from typing import List, Dict
+import random
 
-class Belief:
-    def __init__(self, text: str, confidence: float, timestamp: str):
-        self.text = text
-        self.confidence = confidence
-        self.timestamp = datetime.fromisoformat(timestamp)
+def resolve_conflicts(beliefs):
+    confidences = [belief['confidence'] for belief in beliefs]
+    avg_confidence = sum(confidences) / len(confidences)
+    return [belief for belief in beliefs if belief['confidence'] > avg_confidence]
 
-    def __lt__(self, other: 'Belief'):
-        return self.timestamp > other.timestamp
+def main():
+    beliefs = [
+        {"belief": "The sky is blue", "confidence": 0.8},
+        {"belief": "The sky is green", "confidence": 0.2},
+        {"belief": "The sky is yellow", "confidence": 0.3},
+    ]
+    resolved_beliefs = resolve_conflicts(beliefs)
+    print(json.dumps(resolved_beliefs, indent=2))
 
-def resolve_conflicts(beliefs: List[Dict]) -> List[str]:
-    resolved = {}
-    for belief in sorted(beliefs, key=lambda b: (-b['confidence'], b['timestamp'])):
-        key = belief['key']
-        if key not in resolved:
-            resolved[key] = belief
-        else:
-            if belief['confidence'] > resolved[key]['confidence'] or \
-               (belief['confidence'] == resolved[key]['confidence'] and
-                resolved[key]['timestamp'] > belief['timestamp']):
-                resolved[key] = belief
-    return list(resolved.values())
+if __name__ == '__main__':
+    main()
