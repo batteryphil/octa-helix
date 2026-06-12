@@ -1,34 +1,24 @@
 import json
 from typing import List, Tuple
 
-def belief_conflict(beliefs: List[dict]) -> List[Tuple[str, str]]:
-    conflicts = []
+class Belief:
+    def __init__(self, text: str, confidence: float):
+        self.text = text
+        self.confidence = confidence
+
+    def __str__(self) -> str:
+        return f"{self.text} ({self.confidence:.2f})"
+
+def load_beliefs(file_path: str) -> List[Belief]:
+    with open(file_path, "r") as f:
+        beliefs = json.load(f)
+    return [Belief(belief["text"], belief["confidence"]) for belief in beliefs]
+
+def find_conflicting_pairs(beliefs: List[Belief], confidence_threshold: float) -> List[Tuple[Belief, Belief]]:
+    conflicting_pairs = []
     for i, belief1 in enumerate(beliefs):
-        for belief2 in beliefs[i+1:]:
-            if belief1['confidence'] > 0.8 and belief2['confidence'] > 0.8:
-                if belief1['statement'] != belief2['statement'] and belief1['statement'] != 'NOT ' + belief2['statement'] and belief2['statement'] != 'NOT ' + belief1['statement']:
-                    conflicts.append((belief1['statement'], belief2['statement']))
-    return conflicts
-
-def load_beliefs(file_path: str) -> List[dict]:
-    with open(file_path, 'r') as f:
-        return json.load(f)
-
-def save_beliefs(file_path: str, beliefs: List[dict]):
-    with open(file_path, 'w') as f:
-        json.dump(beliefs, f, indent=2)
-
-def main():
-    beliefs_file = 'beliefs.json'
-    beliefs = load_beliefs(beliefs_file)
-    conflicts = belief_conflict(beliefs)
-    if conflicts:
-        print("Belief conflicts found:")
-        for conflict in conflicts:
-            print(conflict)
-    else:
-        print("No belief conflicts found.")
-    save_beliefs(beliefs_file, beliefs)
-
-if __name__ == '__main__':
-    main()
+        for j in range(i + 1, len(beliefs)):
+            belief2 = beliefs[j]
+            if belief1.confidence > confidence_threshold and belief2.confidence > confidence_threshold:
+                conflicting_pairs.append((belief1, belief2))
+    return conflicting_pairs
