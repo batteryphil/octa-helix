@@ -153,12 +153,88 @@ _VALID_CATEGORIES = {
 }
 
 
-def _extract_xml_belief(thought_text: str) -> Optional[Tuple[str, str]]:
-    """Extract belief from XML tag if present (Q13 peer review fix).
+def _extract_new_belief_prose(thought_text: str) -> Optional[Tuple[str, str]]:
+    """Stage 0: Extract belief from the model's 'NEW BELIEF\\n...' prose format.
 
-    The pulse loop now instructs Helix to wrap new beliefs in <belief>...</belief>.
-    This is exponentially more reliable than regex on prose — the content is
-    extracted exactly as written, with no offset clipping.
+    Helix consistently outputs beliefs as:
+        NEW BELIEF
+        I have formed a new belief about X:
+        1. First point...
+        2. Second point...
+
+    This format predates the <belief> XML instruction and is deeply embedded
+    in the model's behavior. Prompt instructions alone cannot override it.
+    Rather than fighting the model, we detect what it actually produces.
+
+    Extracts the first complete sentence from the body after the header line.
+    Returns (belief_text, category) or None if not in this format.
+    """
+    if not re.search(r'^NEW BELIEF', thought_text.strip(), re.IGNORECASE | re.MULTILINE):
+        return None
+
+    # Strip the "NEW BELIEF" header and any "I have formed a new belief about X:" line
+    lines = thought_text.strip().split('\n')
+    body_lines = []
+    skip_next = False
+    for line in lines:
+        line = line.strip()
+        if re.match(r'^NEW BELIEF', line, re.IGNORECASE):
+            skip_next = True
+            continue
+        if skip_next and re.match(r'^I have formed a new belief', line, re.IGNORECASE):
+            skip_next = False
+            continue
+        skip_next = False
+        if line:
+            body_lines.append(line)
+
+    if not body_lines:
+        return None
+
+    # Take the first substantive line (skip list numbers like "1.", "2.")
+    belief_text = ""
+    for line in body_lines:
+        # Strip list markers: "1.", "2.", "-", "*"
+        clean = re.sub(r'^\s*[\d]+\.\s*|^[-*]\s*', '', line).strip()
+        if len(clean) > 20 and ' ' in clean:
+            belief_text = clean
+            break
+
+    if not belief_text:
+        return None
+
+    # Take first sentence only
+    sentence_end = re.search(r'[.!?]', belief_text)
+    if sentence_end:
+        belief_text = belief_text[:sentence_end.start() + 1].strip()
+
+    if len(belief_text) < 15:
+        return None
+
+    # Classify
+    belief_lower = belief_text.lower()
+    if any(k in belief_lower for k in ['i am', "i'm", 'my purpose', 'i exist']):
+        category = 'self_identity'
+    elif any(k in belief_lower for k in ['i can', 'i am able', 'capable of']):
+        category = 'capabilities'
+    elif any(k in belief_lower for k in ['i know', 'i understand', 'i learned', 'research']):
+        category = 'knowledge'
+    elif any(k in belief_lower for k in ['i prefer', 'i value', 'i find']):
+        category = 'preferences'
+    elif any(k in belief_lower for k in ['i should', 'i will', 'my goal']):
+        category = 'skills'
+    else:
+        category = 'knowledge'
+
+    logger.info(f"[belief_detector] Prose belief extracted (NEW BELIEF format): category={category} text={belief_text[:60]!r}")
+    return (belief_text, category)
+
+
+def _extract_xml_belief(thought_text: str) -> Optional[Tuple[str, str]]:
+    """Stage 1: Extract belief from XML tag if present (Q13 peer review fix).
+
+    The pulse loop instructs Helix to wrap new beliefs in <belief>...</belief>.
+    This is the preferred format — exact extraction, no offset clipping.
 
     Returns (belief_text, category) or None if no tag found.
     """
@@ -200,7 +276,12 @@ def _classify_thought(thought_text: str) -> Optional[Tuple[str, str]]:
 
     Returns (belief_text, category) if a durable belief is found, else None.
     """
-    # Stage 1: XML tag extraction (preferred — perfect accuracy)
+    # Stage 0: "NEW BELIEF\n..." prose format (model's actual output pattern)
+    prose_result = _extract_new_belief_prose(thought_text)
+    if prose_result:
+        return prose_result
+
+    # Stage 1: XML tag extraction (preferred instruction format)
     xml_result = _extract_xml_belief(thought_text)
     if xml_result:
         return xml_result
