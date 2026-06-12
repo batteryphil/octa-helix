@@ -7,6 +7,8 @@ def validate_json(json_string):
         return 'valid'
     except json.JSONDecodeError as e:
         return 'invalid', str(e)
+    except Exception as e:
+        return 'invalid', str(e)
 
 def main():
     if len(sys.argv) != 2:
