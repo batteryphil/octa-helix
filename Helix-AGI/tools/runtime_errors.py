@@ -1,21 +1,24 @@
+import os
 import json
 import re
-import pathlib
+from pathlib import Path
 from typing import List, Dict
 
-def parse_helix_log_file(log_file_path: str) -> List[Dict]:
-    with open(log_file_path, 'r') as file:
-        lines = file.readlines()
-    
-    error_lines = [line.strip() for line in lines if 'ERROR' in line]
-    last_20_errors = error_lines[-20:]
-    
-    return [{'line_number': i+1, 'error_message': error} for i, error in enumerate(last_20_errors)]
+def get_last_20_error_lines(log_file: Path) -> List[Dict]:
+    with open(log_file, "r") as f:
+        lines = f.readlines()
+    error_lines = [line.strip() for line in lines[-20:] if "ERROR" in line]
+    return [{"line": line, "timestamp": str(Path(log_file).stat().st_mtime)} for line in error_lines]
 
 def main():
-    log_file_path = 'path/to/helix/log/file.log'
-    errors = parse_helix_log_file(log_file_path)
-    print(json.dumps(errors, indent=2))
+    log_dir = Path("/var/log/helix")
+    log_files = list(log_dir.glob("*.log"))
+    if log_files:
+        most_recent_log = max(log_files, key=lambda f: f.stat().st_mtime)
+        errors = get_last_20_error_lines(most_recent_log)
+        print(json.dumps(errors, indent=2))
+    else:
+        print("No log files found in Helix log directory.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
