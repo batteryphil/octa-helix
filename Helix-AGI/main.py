@@ -1,36 +1,14 @@
 """
 Helix — Main Entry Point
 
-Project Specification: Helix-Mamba Nervous System Integration
-Objective: To refactor the Helix-AGI framework to support low-parameter State-Space Models (1.4B–2.7B Mamba) by migrating the "Lagrangian Sentinel" cognitive state management from a text-based, prompt-injected JSON system to a direct-feed neural telemetry system.
-
-The Problem: Current small-scale models lack the instruction-following capacity to parse, format, and adhere to the heavy mathematical structure required for the 8D cognitive manifold (Lagrangian Sentinel) within the system prompt. This results in "Dormant" status, JSON parsing failures, and context-window saturation, rendering the agent unresponsive.
-
-The Solution (Proposed Workflow):
-1. Direct Telemetry via Hooks: Utilize torch.nn.Module.register_forward_hook to intercept hidden states from the Mamba SSM blocks.
-2. Entropy Extraction: Calculate the internal "Internal Weather" (\Omegamega) by computing the Shannon entropy of the latent state distributions. This bypasses the need for the model to "speak" its own state, preventing hallucinated math.
-3. Manifold Projection: Implement a lightweight W \in \mathbb{R}^{d_model \times 8} projection layer to map high-dimensional latent states directly into the 8D coordinate space required by the Helix manifold.
-4. Decoupled State Board: Refactor state_board.py to accept input via a high-frequency telemetry stream (Python Queue or SharedMemory) rather than regex-parsing model text output.
-
-Why This Is Necessary:
-- Deterministic State: It removes reliance on the model's ability to output valid JSON, ensuring the "Heartbeat" of the agent remains consistent regardless of the model's chat output.
-- Resource Efficiency: By stripping the manifold instructions from the system prompt, we reclaim approximately 40-50% of the model’s effective context window, allowing small-scale models to focus entirely on reasoning and dialogue.
-- Hardware Compatibility: This architecture allows for fluid execution on consumer-grade hardware (1.4B–2.7B parameters), effectively making the "Helix" cognitive framework model-agnostic.
-
-Success Criteria:
-- The agent maintains an active, non-dormant pulse while processing locally.
-- The 8D Manifold telemetry updates in real-time as the model processes input, visible through the state_board.py monitor.
-- The model responds to user input without requiring a JSON-formatted self-reflection output.
-
----
-
-Initializes the full cognitive architecture and runs the pulse loop:
-  - Three-tier memory (short-term, long-term, core)
-  - Categorized belief store (identity, people, capabilities, desires, knowledge)
-  - Astrophysical physics engine
-  - Active pre-conscious (short-term + core + beliefs + scratchpad)
-  - Scratchpad (conscious notepad with reminders)
-  - Continuous pulse-based consciousness loop (start_chat())
+Initializes the full Helix cognitive architecture:
+  - Memory systems (short-term, long-term, core)
+  - Belief store (identity, knowledge, capabilities, etc.)
+  - Physics engine (8D manifold)
+  - Preconscious injection
+  - Pulse loop (consciousness)
+  - Self-evolution engines
+  - Dashboard comms
 """
 
 import os
