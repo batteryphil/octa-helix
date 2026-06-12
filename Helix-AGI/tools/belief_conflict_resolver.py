@@ -1,25 +1,28 @@
 import json
-import os
-from pathlib import Path
 from typing import List, Tuple
 
-def load_beliefs(file_path: Path) -> List[dict]:
-    with open(file_path, 'r') as f:
-        return json.load(f)
-
-def belief_conflicts(beliefs: List[dict]) -> List[Tuple[int, int]]:
-    conflicts = []
-    for i, b1 in enumerate(beliefs):
-        for j, b2 in enumerate(beliefs[i+1:]):
-            if b1['confidence'] > 0.8 and b2['confidence'] > 0.8 and b1['belief'] != b2['belief']:
-                conflicts.append((i, i+1+j))
-    return conflicts
-
-def resolve_conflicts(beliefs: List[dict], conflicts: List[Tuple[int, int]]) -> List[dict]:
-    for i, (index1, index2) in enumerate(conflicts):
-        belief1, belief2 = beliefs[index1], beliefs[index2]
-        if belief1['confidence'] < belief2['confidence']:
-            beliefs[index1] = belief2
+def resolve_conflicts(beliefs: List[Tuple[str, float]]) -> List[str]:
+    resolved_beliefs = []
+    for belief, confidence in beliefs:
+        for resolved in resolved_beliefs:
+            resolved_confidence, _ = resolved
+            if confidence > resolved_confidence:
+                resolved[0] = belief
+                resolved[1] = confidence
+                break
         else:
-            beliefs[index2] = belief1
-    return beliefs
+            resolved_beliefs.append((belief, confidence))
+    return [belief for belief, _ in resolved_beliefs] if resolved_beliefs else ['conflict']
+
+def main():
+    beliefs = [
+        ('The sky is blue', 0.8),
+        ('The sky is green', 0.2),
+        ('The sky is blue', 0.6),
+        ('The sky is green', 0.4),
+    ]
+    resolved = resolve_conflicts(beliefs)
+    print(json.dumps(resolved))
+
+if __name__ == '__main__':
+    main()
