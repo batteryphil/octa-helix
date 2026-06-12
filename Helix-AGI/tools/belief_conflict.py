@@ -1,35 +1,37 @@
 import json
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Dict, Any
 
-from bs4 import BeautifulSoup
-import requests
+def load_beliefs(filename: str) -> List[Dict[str, Any]]:
+    with open(filename, 'r') as f:
+        return json.load(f)
 
-# Mock belief_store.json
-BELIEF_STORE_FILE = "belief_store.json"
+def save_beliefs(filename: str, beliefs: List[Dict[str, Any]]):
+    with open(filename, 'w') as f:
+        json.dump(beliefs, f, indent=2)
 
-def load_beliefs(file_path: str) -> List[Tuple[str, float]]:
-    with open(file_path, "r") as f:
-        beliefs = json.load(f)
-    return [(belief["belief"], belief["confidence"]) for belief in beliefs if belief["confidence"] > 0.8]
-
-def find_conflicts(beliefs: List[Tuple[str, float]]) -> List[Tuple[str, str]]:
+def resolve_conflicts(beliefs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    resolved = []
     conflicts = []
-    for i, (belief1, _) in enumerate(beliefs):
-        for belief2, _ in beliefs[i+1:]:
-            if belief1 == belief2:
+    for i, b1 in enumerate(beliefs):
+        for j, b2 in enumerate(beliefs[i+1:]):
+            if b1['belief'] == b2['belief']:
                 continue
-            if any(map(belief1.__contains__, ["not", "no", "never", "none"]) and any(map(belief2.__contains__, ["not", "no", "never", "none"])) or 
-                any(map(belief2.__contains__, ["not", "no", "never", "none"]) and any(map(belief1.__contains__, ["not", "no", "never", "none"]))) or
-                belief1.startswith("The belief") and belief2.startswith("The belief")):
-                conflicts.append((belief1, belief2))
-    return conflicts
+            if b1['confidence'] > 0.5 and b2['confidence'] > 0.5:
+                conflicts.append((b1, b2))
+                resolved.append({'belief': b1['belief'], 'confidence': (b1['confidence'] + b2['confidence']) / 2})
+    return resolved, conflicts
 
 def main():
-    beliefs = load_beliefs(BELIEF_STORE_FILE)
-    conflicts = find_conflicts(beliefs)
-    print(json.dumps(conflicts, indent=2))
-
-if __name__ == "__main__":
-    main()
+    beliefs_file = 'beliefs.json'
+    if os.path.exists(beliefs_file):
+        beliefs = load_beliefs(beliefs_file)
+    else:
+        beliefs = [
+            {'belief': 'The sky is blue', 'confidence': 0.8},
+            {'belief': 'The sky is green', 'confidence': 0.2},
+            {'belief': '2 + 2 = 4', 'confidence': 1.0}
+        ]
+    
+    resolved, conflicts = resolve_conf
