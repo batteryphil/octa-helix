@@ -1,28 +1,24 @@
 import json
-from typing import List, Tuple
+from pathlib import Path
 
-def resolve_conflicts(beliefs: List[Tuple[str, float]]) -> List[str]:
-    resolved_beliefs = []
-    for belief, confidence in beliefs:
-        for resolved in resolved_beliefs:
-            resolved_confidence, _ = resolved
-            if confidence > resolved_confidence:
-                resolved[0] = belief
-                resolved[1] = confidence
-                break
-        else:
-            resolved_beliefs.append((belief, confidence))
-    return [belief for belief, _ in resolved_beliefs] if resolved_beliefs else ['conflict']
+def resolve_conflict(conflicting_beliefs):
+    merged_belief = {}
+    for belief in conflicting_beliefs:
+        for key, value in belief.items():
+            if key not in merged_belief or merged_belief[key] in ({}, None):
+                merged_belief[key] = value
+            else:
+                if isinstance(merged_belief[key], list):
+                    merged_belief[key].append(value)
+                else:
+                    merged_belief[key] = [merged_belief[key], value]
+    return merged_belief
 
 def main():
-    beliefs = [
-        ('The sky is blue', 0.8),
-        ('The sky is green', 0.2),
-        ('The sky is blue', 0.6),
-        ('The sky is green', 0.4),
-    ]
-    resolved = resolve_conflicts(beliefs)
-    print(json.dumps(resolved))
+    with open(Path(__file__).with_name() / 'belief_conflict.json') as file:
+        conflicting_beliefs = json.load(file)
+    resolved_belief = resolve_conflict(conflicting_beliefs)
+    print(json.dumps(resolved_belief, indent=2))
 
 if __name__ == '__main__':
     main()
