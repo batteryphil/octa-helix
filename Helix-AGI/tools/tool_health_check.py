@@ -1,29 +1,47 @@
 import os
 import json
 import pathlib
-import subprocess
+import importlib
+import inspect
 import sys
 
-def check_tool_health(tool_name, tool_module):
+def load_modules(directory):
+    modules = []
+    for entry in os.scandir(directory):
+        if entry.is_dir() and not entry.name.startswith('.'):
+            module_name = entry.name
+            sys.path.insert(0, str(entry))
+            try:
+                module = importlib.import_module(module_name)
+                modules.append((module_name, module))
+            finally:
+                sys.path.pop(0)
+    return modules
+
+def get_tool_function(module, function_name):
+    for name, val in inspect.getmembers(module):
+        if name == function_name:
+            return val
+    return None
+
+def run_tool(module, function):
     try:
-        tool = __import__(tool_name)
-        result = tool.check_health()
-        return result
+        function()
+        return True
     except Exception as e:
-        return f"Error: {str(e)}"
+        return False
 
 def main():
-    tools_dir = pathlib.Path(__file__).parent / "tools"
-    tool_health_results = {}
+    tools_directory = pathlib.Path(__file__).parent / 'tools'
+    tool_health = {}
 
-    for tool_name in os.listdir(tools_dir):
-        if tool_name.endswith(".py") and tool_name != "tool_health_check.py":
-            tool_path = tools_dir / tool_name
-            tool_module = tool_name[:-3]
-            health_result = check_tool_health(tool_module, tool_path)
-            tool_health_results[tool_module] = health_result
+    for module_name, module in load_modules(tools_directory):
+        function = get_tool_function(module, 'test')
+        if function:
+            result = run_tool(module, function)
+            tool_health[module_name] = {'status': 'pass' if result else 'fail'}
 
-    print(json.dumps(tool_health_results, indent=2))
+    print(json.dumps(tool_health, indent=2))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
