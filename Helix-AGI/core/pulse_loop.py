@@ -605,6 +605,23 @@ class PulseLoop:
         except Exception:
             pass
 
+    def _write_status_heartbeat(self):
+        """Write current state and pulse to data/status.json every 10 pulses.
+
+        The dashboard read_status() reads the log tail to find state transitions.
+        If the last transition is older than the tail window, state shows as UNKNOWN.
+        This file always reflects the current state, bypassing the log-size issue.
+        """
+        try:
+            import json as _json
+            Path("data").mkdir(exist_ok=True)
+            Path("data/status.json").write_text(_json.dumps({
+                "state": self._state,
+                "pulse": self._pulse_count,
+            }))
+        except Exception:
+            pass
+
     # ── The Pulse ────────────────────────────────────────────────────
 
     def _pulse(self):
@@ -885,6 +902,25 @@ class PulseLoop:
             f"Pulse {self._pulse_count} ({self._state}): "
             f"{len(events)} events → {len(thought)} chars thought"
         )
+
+        # 9b. OOM prevention — char-count based context reset
+        #     _session_token_count may stay at 0 if the provider doesn't
+        #     track tokens. Use history char count as a reliable fallback.
+        #     At 4 chars/token, 120,000 chars ≈ 30k tokens — safe for 12GB VRAM.
+        #     Only triggers when not ACTIVE (avoid interrupting user conversations).
+        if self._chat and hasattr(self._chat, 'get_history_size'):
+            _history_chars = self._chat.get_history_size()
+            _CHAR_LIMIT = 120_000
+            if _history_chars > _CHAR_LIMIT and self._state != "ACTIVE":
+                logger.warning(
+                    f"OOM prevention: context is {_history_chars:,} chars "
+                    f"(limit {_CHAR_LIMIT:,}) — auto-resetting session"
+                )
+                self._reset_session("oom_prevention")
+
+        # Write state heartbeat every 10 pulses for dashboard state tracking
+        if self._pulse_count % 10 == 0:
+            self._write_status_heartbeat()
 
         # 10. Check for pending context reset (from reset_context tool)
         if self._pending_context_reset:

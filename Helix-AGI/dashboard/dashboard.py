@@ -281,29 +281,46 @@ def read_status() -> Dict[str, Any]:
     if g is not None:
         gamma = round(float(g[0]), 3)
 
-    # Parse last known values from log
+    # Priority 1: heartbeat file written by pulse loop every 10 pulses.
+    # Always current — no dependency on log tail window size.
     omega = 0.5
     pulse = 0
     state = "UNKNOWN"
+    STATUS_FILE = BASE_DIR / "data" / "status.json"
+    if STATUS_FILE.exists():
+        try:
+            with open(STATUS_FILE) as f:
+                heartbeat = json.load(f)
+            state = heartbeat.get("state", "UNKNOWN")
+            pulse = heartbeat.get("pulse", 0)
+        except Exception:
+            pass
+
+    # Priority 2: log tail for omega (and pulse/state fallback if file missing).
     if LOG_PATH.exists():
         try:
             with open(LOG_PATH, "rb") as f:
-                f.seek(max(0, f.seek(0, 2) - 200_000))  # last ~200KB of log
+                f.seek(max(0, f.seek(0, 2) - 200_000))  # last ~200KB
                 tail = f.read().decode("utf-8", errors="replace")
             for line in tail.split("\n"):
                 m = re.search(r"Ω=([0-9.]+)", line)
                 if m:
                     omega = float(m.group(1))
-                m = re.search(r"Pulse (\d+)", line)
-                if m:
-                    pulse = int(m.group(1))
-                m = re.search(r"→ (DORMANT|RESTING|REGULAR|ACTIVE)", line)
-                if m:
-                    state = m.group(1)
-                if "state=" in line.lower():
-                    m2 = re.search(r"state['\"]?\s*[:=]\s*['\"]?(DORMANT|RESTING|REGULAR|ACTIVE)", line, re.I)
-                    if m2:
-                        state = m2.group(1).upper()
+                if pulse == 0:
+                    m = re.search(r"Pulse (\d+)", line)
+                    if m:
+                        pulse = int(m.group(1))
+                if state == "UNKNOWN":
+                    m = re.search(r"→ (DORMANT|RESTING|REGULAR|ACTIVE)", line)
+                    if m:
+                        state = m.group(1)
+                    if "state=" in line.lower():
+                        m2 = re.search(
+                            r"state['\"]?\s*[:=]\s*['\"]?(DORMANT|RESTING|REGULAR|ACTIVE)",
+                            line, re.I,
+                        )
+                        if m2:
+                            state = m2.group(1).upper()
         except Exception:
             pass
 
