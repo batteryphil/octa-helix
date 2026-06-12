@@ -1,34 +1,40 @@
 import json
 import requests
-from bs4 import BeautifulSoup
-import re
-import pathlib
+import jsonlines
+from pathlib import Path
 
-def get_facts_from_wikipedia(query):
-    url = f"https://en.wikipedia.org/wiki/{query}"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    paragraphs = soup.find_all("p")
-    facts = []
-    for p in paragraphs:
-        text = p.text.strip()
-        if text:
-            facts.append(text)
+def load_facts():
+    facts = {}
+    for line in jsonlines.open('curiosity_knowledge.jsonl'):
+        item = json.loads(line)
+        facts[item['id']] = item['text']
     return facts
 
-def calculate_confidence(statement, facts):
-    statement_words = statement.lower().split()
-    fact_words = [fact.lower() for fact in facts]
-    count = sum(1 for word in statement_words if word in fact_words)
-    return count / len(statement_words)
+def check_fact(statement, facts):
+    supported = []
+    contradicted = []
+    for fact_id, fact in facts.items():
+        if re.search(statement, fact):
+            supported.append(fact_id)
+        elif re.search(fact, statement):
+            contradicted.append(fact_id)
+    return {
+        'supported': supported,
+        'contradicted': contradicted,
+        'confidence': len(supported) - len(contradicted)
+    }
 
-def fact_checker(statement):
-    query = re.sub(r"[^a-zA-Z0-9 ]", "", statement).capitalize()
-    facts = get_facts_from_wikipedia(query)
-    confidence = calculate_confidence(statement, facts)
-    return {"statement": statement, "query": query, "confidence": confidence, "facts": facts}
+def main():
+    statement = input("Enter a statement to check: ")
+    facts = load_facts()
+    result = check_fact(statement, facts)
+    print(f"Confidence: {result['confidence']}")
+    print("Supported by facts:")
+    for fact_id in result['supported']:
+        print(fact_id)
+    print("Contradicted by facts:")
+    for fact_id in result['contradicted']:
+        print(fact_id)
 
-if __name__ == "__main__":
-    statement = "The capital of France is Paris."
-    result = fact_checker(statement)
-    print(json.dumps(result, indent=2))
+if __name__ == '__main__':
+    main()
