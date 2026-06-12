@@ -1084,22 +1084,9 @@ class PulseLoop:
         # content to be stored with offset clipping (starts mid-sentence).
         # XML tags are exponentially more reliable for extraction.
         # Instruction is lightweight — added to every pulse, not just mandate pulses.
-        # ── ReAct Planning Hint (all pulses) ─────────────────────────────
-        # When a multi-step task requires several tools (read→write→search),
-        # the model should outline the steps before the first <tool_call>.
-        # This fires on all pulses so it trains the planning behavior broadly.
-        # On mandate pulses where the prefill seeds <tool_call> directly, the
-        # plan tag is naturally skipped — no conflict with Format 1b parser.
-        parts.append(
-            "\n[PLANNING]\n"
-            "If your next action requires multiple steps (e.g., read a file, then write "
-            "a summary, then search for more), output a <plan> block before your first "
-            "<tool_call>. Keep it brief. Example:\n"
-            "<plan>Step 1: read llm/providers/hermes_tool_provider.py. "
-            "Step 2: write summary to data/self_knowledge/inference_engine.md. "
-            "Step 3: search for architectural limitations. Executing Step 1.</plan>\n"
-            "Single-step actions do not need a plan."
-        )
+        # NOTE: [PLANNING] / ReAct block removed — it caused the model to write
+        # a plan as the ENTIRE response (CALLS=None) on 12/13 consecutive pulses.
+        # Multi-step planning emerges naturally from the mandate task structure.
 
         parts.append(
             "\n[BELIEF FORMATION]\n"
