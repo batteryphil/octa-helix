@@ -4,29 +4,26 @@ import pathlib
 import subprocess
 import sys
 
-def run_tool(tool_name, tool_module):
+def check_tool_health(tool_name, tool_module):
     try:
-        module = __import__(tool_module)
-        result = module.check_function()
+        tool = __import__(tool_name)
+        result = tool.check_health()
         return result
     except Exception as e:
-        return f"Failed to run {tool_name}: {str(e)}"
+        return f"Error: {str(e)}"
 
-def check_tool_health():
+def main():
     tools_dir = pathlib.Path(__file__).parent / "tools"
-    health_report = {}
+    tool_health_results = {}
 
     for tool_name in os.listdir(tools_dir):
         if tool_name.endswith(".py") and tool_name != "tool_health_check.py":
             tool_path = tools_dir / tool_name
-            tool_module = f"tools.{tool_name[:-3]}"
-            health_report[tool_name] = run_tool(tool_name, tool_module)
+            tool_module = tool_name[:-3]
+            health_result = check_tool_health(tool_module, tool_path)
+            tool_health_results[tool_module] = health_result
 
-    return health_report
-
-def main():
-    health_status = check_tool_health()
-    print(json.dumps(health_status, indent=2))
+    print(json.dumps(tool_health_results, indent=2))
 
 if __name__ == "__main__":
     main()
