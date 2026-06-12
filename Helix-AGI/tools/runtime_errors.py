@@ -1,19 +1,22 @@
+import os
 import re
-import json
-import pathlib
-from typing import List, Dict
+from pathlib import Path
 
-def extract_last_n_errors(log_file_path: str, n: int = 20) -> List[str]:
-    with open(log_file_path, 'r') as file:
-        content = file.read()
+def extract_last_20_error_logs():
+    log_file_path = Path('logs/helix.log')
     
-    error_lines = re.findall(r'ERROR.*', content)[-n:]
-    return error_lines
+    with open(log_file_path, 'r') as file:
+        lines = file.readlines()
+    
+    error_lines = [line for line in lines if 'ERROR' in line]
+    last_20_errors = error_lines[-20:]
+    
+    return last_20_errors
 
-def main() -> None:
-    log_file_path = pathlib.Path(__file__).resolve().parent / 'helix.log'
-    last_errors = extract_last_n_errors(log_file_path)
-    print(json.dumps(last_errors))
+def main():
+    error_logs = extract_last_20_error_logs()
+    for log in error_logs:
+        print(log, end='')
 
 if __name__ == '__main__':
     main()
