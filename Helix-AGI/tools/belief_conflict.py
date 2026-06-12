@@ -1,37 +1,26 @@
 import json
 import os
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Tuple
 
-def load_beliefs(filename: str) -> List[Dict[str, Any]]:
+def load_beliefs(filename: str) -> List[Tuple[str, float]]:
     with open(filename, 'r') as f:
-        return json.load(f)
+        beliefs = json.load(f)
+    return [(belief, confidence) for belief, confidence in beliefs.items() if confidence > 0.8]
 
-def save_beliefs(filename: str, beliefs: List[Dict[str, Any]]):
-    with open(filename, 'w') as f:
-        json.dump(beliefs, f, indent=2)
-
-def resolve_conflicts(beliefs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    resolved = []
+def find_conflicts(beliefs: List[Tuple[str, float]]) -> List[Tuple[str, str]]:
     conflicts = []
-    for i, b1 in enumerate(beliefs):
-        for j, b2 in enumerate(beliefs[i+1:]):
-            if b1['belief'] == b2['belief']:
-                continue
-            if b1['confidence'] > 0.5 and b2['confidence'] > 0.5:
-                conflicts.append((b1, b2))
-                resolved.append({'belief': b1['belief'], 'confidence': (b1['confidence'] + b2['confidence']) / 2})
-    return resolved, conflicts
+    for i, (belief1, _) in enumerate(beliefs):
+        for belief2, _ in beliefs[i+1:]:
+            if belief1[0] != belief2[0] and belief1[0] != 'meta' and belief2[0] != 'meta':
+                if belief1[0] == 'meta' or belief2[0] == 'meta':
+                    conflicts.append((belief1[0], belief2[0]))
+                elif belief1[0] != belief2[0]:
+                    conflicts.append((belief1[0], belief2[0]))
+    return conflicts
 
-def main():
-    beliefs_file = 'beliefs.json'
-    if os.path.exists(beliefs_file):
-        beliefs = load_beliefs(beliefs_file)
-    else:
-        beliefs = [
-            {'belief': 'The sky is blue', 'confidence': 0.8},
-            {'belief': 'The sky is green', 'confidence': 0.2},
-            {'belief': '2 + 2 = 4', 'confidence': 1.0}
-        ]
-    
-    resolved, conflicts = resolve_conf
+# Example usage
+if __name__ == "__main__":
+    filename = "beliefs.json"
+    beliefs = load_beliefs(filename)
+    conflicts = find_conflicts(beliefs)
+    print(conflicts)
