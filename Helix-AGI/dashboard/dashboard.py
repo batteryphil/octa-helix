@@ -288,7 +288,7 @@ def read_status() -> Dict[str, Any]:
     if LOG_PATH.exists():
         try:
             with open(LOG_PATH, "rb") as f:
-                f.seek(max(0, f.seek(0, 2) - 20000))
+                f.seek(max(0, f.seek(0, 2) - 200_000))  # last ~200KB of log
                 tail = f.read().decode("utf-8", errors="replace")
             for line in tail.split("\n"):
                 m = re.search(r"Ω=([0-9.]+)", line)

@@ -326,7 +326,14 @@ class ToolExecutor:
             entry = self._registry.get_entry(name)
             if entry:
                 try:
-                    return entry.handler(args)
+                    # Try kwarg-based dispatch first (for code_tools fc_* functions
+                    # that expect named params, e.g. fc_reload_tool(module_path=...))
+                    # If that fails with TypeError, fall back to positional dict
+                    # dispatch (_fc_* bound methods that take args:dict directly).
+                    try:
+                        return entry.handler(**args)
+                    except TypeError:
+                        return entry.handler(args)
                 except Exception as e:
                     logger.error(f"Tool {name} failed: {e}")
                     return f"Tool error ({name}): {e}"
