@@ -1,34 +1,36 @@
 import json
 import os
-import sys
-import requests
-from bs4 import BeautifulSoup
 from pathlib import Path
+from typing import List, Tuple
 
-def get_beliefs():
-    # Placeholder function to get beliefs from some source
-    # Replace with actual implementation
-    return [
-        {"id": 1, "text": "The sky is blue.", "confidence": 0.95},
-        {"id": 2, "text": "The sky is gray.", "confidence": 0.85},
-        # Add more beliefs as needed
-    ]
+def load_beliefs(filename: str) -> List[dict]:
+    with open(filename, 'r') as f:
+        return json.load(f)
 
-def resolve_conflict(belief1, belief2):
-    # Placeholder function to resolve belief conflict
-    # Replace with actual conflict resolution logic
-    return f"Resolved conflict between '{belief1['text']}' and '{belief2['text']}': {belief1['id']} > {belief2['id']}"
+def extract_beliefs(belief: str) -> Tuple[str, str]:
+    return (re.search(r'(?P<subject>.*?):\s*(?P<belief>.*)', belief).group('subject'), re.search(r'(?P<belief>.*?):\s*(?P<subject>.*?)', belief).group('subject'))
+
+def find_conflicts(beliefs: List[dict]) -> List[Tuple[str, str]]:
+    conflicts = []
+    for i, b1 in enumerate(beliefs):
+        for b2 in beliefs[i+1:]:
+            if b1['subject'] == b2['subject']:
+                conflicts.append((b1['belief'], b2['belief']))
+    return conflicts
+
+def resolve_conflict(belief1: str, belief2: str) -> str:
+    if belief1 in belief2 or belief2 in belief1:
+        return "The beliefs are too similar to resolve automatically."
+    return "The beliefs conflict and require manual resolution."
 
 def main():
-    beliefs = get_beliefs()
-    conflicts = []
+    filename = 'beliefs.json'
+    beliefs = load_beliefs(filename)
+    conflicts = find_conflicts(beliefs)
+    for conflict in conflicts:
+        print(f"Conflicting beliefs: {conflict[0]} and {conflict[1]}")
+        print(f"Resolution suggestion: {resolve_conflict(conflict[0], conflict[1])}")
+        print()
 
-    for i in range(len(beliefs)):
-        for j in range(i+1, len(beliefs)):
-            if abs(beliefs[i]["confidence"] - beliefs[j]["confidence"]) > 0.1:
-                conflicts.append((beliefs[i], beliefs[j], resolve_conflict(beliefs[i], beliefs[j])))
-
-    print(json.dumps({"conflicts": conflicts}, indent=2))
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
