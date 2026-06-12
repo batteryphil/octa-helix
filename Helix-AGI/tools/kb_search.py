@@ -1,17 +1,30 @@
 import json
 import jsonlines
 import re
-from pathlib import Path
+import pathlib
 
-def search_knowledge(query):
-    with jsonlines.open('curiosity_knowledge.jsonl', 'r') as f:
-        lines = list(f)
-    results = sorted(enumerate(lines), key=lambda x: re.search(query, x[1]['text'], re.IGNORECASE), reverse=True)[:3]
-    return [(lines[i]['id'], lines[i]['text']) for i, _ in results]
+def load_knowledge_base():
+    knowledge_path = pathlib.Path(__file__).parent / "curiosity_knowledge.jsonl"
+    with knowledge_path.open() as file:
+        return list(jsonlines.Reader(file))
+
+def search_knowledge(knowledge, keyword):
+    results = []
+    for entry in knowledge:
+        if keyword in entry['title'].lower() or keyword in entry['content'].lower():
+            results.append(entry)
+        if len(results) >= 3:
+            break
+    return results
+
+def main():
+    keyword = input("Enter a search keyword: ")
+    knowledge = load_knowledge_base()
+    results = search_knowledge(knowledge, keyword)
+    print(f"Top 3 relevant entries for '{keyword}':")
+    for i, result in enumerate(results, 1):
+        print(f"{i}. {result['title']}")
+        print(f"   {result['content']}")
 
 if __name__ == '__main__':
-    query = input("Enter search query: ")
-    top_results = search_knowledge(query)
-    print("Top 3 results:")
-    for i, (id, text) in enumerate(top_results, 1):
-        print(f"{i}. {id} - {text}")
+    main()
