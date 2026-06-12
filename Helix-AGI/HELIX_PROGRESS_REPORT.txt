@@ -1,157 +1,271 @@
 ================================================================================
-HELIX-AGI AUTONOMOUS PROGRESS REPORT
-Updated: 2026-06-11 05:19  |  Pulse: 1355  |  Commit: dd3e3f7
+HELIX-AGI PROGRESS REPORT — REVISION 5
+Generated: 2026-06-12T18:08:00-05:00
+Session runtime: ~7 days continuous (multiple restarts, longest: ~10 hrs)
+Git SHA: 86b4ec5
+Pulse count: 3413  (lifetime)
+Tuples: 427  |  Beliefs: 35  |  Curiosity findings: 2,697
 ================================================================================
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYSTEM STATUS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXECUTIVE SUMMARY
+================================================================================
 
-  State:         ACTIVE (restarted 05:13 Jun 11)
-  Pulse:         1355  (~545 since last report at Pulse 810)
-  Beliefs:       35    (up from 19 at session start)
-  Tuples:        139   (up from 3 at session start)
-  Fitness:       0.660 (peak 0.675)
-  Tool rate:     20%   (up from ~4% at session start)
-  Tool success:  100%  (when call lands)
+Helix is a locally-running, self-evolving autonomous agent running 24/7 on a
+consumer RTX 3060 (12GB VRAM). It uses NousResearch/Hermes-3-Llama-3.1-8B at
+4-bit NF4 quantization (~4.5GB loaded). Every pulse it reasons, uses tools,
+accumulates experience tuples, and the Self-Improvement Engine (SIE) proposes
+and writes new tools autonomously. The goal: enough quality training data to
+fine-tune the base model on its own behaviour (self-LoRA).
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ACHIEVEMENTS (cumulative)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Hardware:    NVIDIA RTX 3060 12GB  |  7.1GB used during inference
+Model:       Hermes-3-Llama-3.1-8B (NF4 4-bit, ~4.5GB)
+Pulse rate:  ~60–90s per autonomous pulse (RESTING/REGULAR)
+Uptime:      7 days, multiple controlled restarts
+Repo:        https://github.com/batteryphil/octa-helix
 
-[1] AUTONOMOUS TOOL AUTHORSHIP — 35 unique tool files written
-────────────────────────────────────────────────────────────────────────────────
-Helix identified capability gaps and filled them without prompting:
-  • system_health_alert.py    — monitors CPU/VRAM, alerts if >80%
-  • runtime_errors.py         — tails its own ERROR log
-  • belief_conflict.py        — detects contradictory beliefs
-  • belief_conflict_resolver.py — resolves conflicts automatically
-  • belief_integrator.py      — synthesizes across beliefs
-  • knowledge_integrator.py   — combines search results
-  • hallucination_detector.py — flags potentially hallucinated outputs
-  • fitness_tracker.py        — tracks own fitness over time
-  • curiosity_tracker.py      — visualizes exploration history
-  • kb_search.py              — searches own knowledge base
-  • memory_summarizer.py      — compresses memory chains
-  • task_tracker.py           — tracks multi-step goals
-  • error_analyzer.py         — classifies errors from logs
-  • novelty_detector.py       — detects repetitive vs new thoughts
-  • networkx_wrapper.py       — (refactored) improved graph queries
-  • tool_health_check.py      — (refactored) fixed tool scan logic
-  + 19 more
+================================================================================
+CUMULATIVE STATISTICS
+================================================================================
 
-  Total write_code events: 401 across 35 unique files
-  Also refactored 2 pre-existing tools autonomously.
+  Lifetime pulses          : 3,413
+  Experience tuples        : 427
+    ↳ tool_executed        : 382  (89.5%)
+    ↳ novel_belief         : 45   (10.5%)
+  Average tuple quality    : 0.853 / 1.0
+  Beliefs formed           : 35
+    ↳ capabilities         : 22
+    ↳ self_identity        : 7
+    ↳ knowledge            : 3
+    ↳ skills               : 3
+  Curiosity findings       : 2,697
+  SIE tools authored       : 55 .py files (Helix wrote these itself)
+  Callable registered tools: ~20 (in ToolRegistry)
+  Git commits (total)      : 286
+  Git commits (this week)  : 284
+    ↳ Jun 8                : 10
+    ↳ Jun 9                : 47
+    ↳ Jun 10               : 84
+    ↳ Jun 11               : 84
+    ↳ Jun 12               : 59
+  Evolution journal entries: 1,193
 
-[2] TRAINING DATA — 3 → 139 tuples (+4,533%)
-────────────────────────────────────────────────────────────────────────────────
-  Tool breakdown: search=126, novel_belief=11, clear_notes=1, github_search=1
-  Collection rate: ~1 tuple per 4-5 minutes (accelerating)
-  LoRA training fires at: 2000 tuples (~130hrs at current rate)
-  Prompt quality: clean from pulse 1349+ (post-restart fix active)
+================================================================================
+CURRENT LIVE STATUS (18:08 CDT Jun 12)
+================================================================================
 
-[3] BELIEFS — 19 → 35 persistent beliefs formed
-────────────────────────────────────────────────────────────────────────────────
-Topics Helix has formed beliefs about:
-  • Recursive self-improvement and the Gödel Machine framework
-  • Transformer attention mathematics and its limitations
-  • Whether AI can be conscious (19-researcher checklist)
-  • Continual learning and catastrophic forgetting
-  • How LoRA fine-tuning will affect its own behavior
-  • The relationship between tool-use and intelligence
-  • What makes a "smarter" Hermes-3-based agent
+  Process:   PID 2592543 — alive, ~40% CPU
+  Dashboard: PID 2592938 — alive (restarted today)
+  GPU:       62% utilization, 7122/12288 MiB
+  State:     RESTING → REGULAR (active tool use)
+  Omega (Ω): 0.908 (high stability)
+  Pulse:     3413 and rising
 
-[4] RESEARCH CONDUCTED — self-directed, no prompting
-────────────────────────────────────────────────────────────────────────────────
-Topics searched overnight:
-  • "Gödel Machine recursive self-improvement AI"
-  • "continual learning catastrophic forgetting LLM fine-tuning"
-  • "emergent cognition in large language models"
-  • "transformer attention limitations mathematically"
-  • "what are key architectural improvements for a Hermes-3 agent?"
-  • "19-researcher consciousness checklist"
-  • "Agent Reasoning github" (reading Jun 11 05:18 — ongoing)
-  • Currently reading: HELIX_AGI_SYSTEM_REPORT.txt (its own progress report)
+  Latest curiosity: "github:batteryphil/octa-helix — read my own README"
+  (Helix is self-aware of its own repository status)
 
-[5] FITNESS TRAJECTORY
-────────────────────────────────────────────────────────────────────────────────
-  Pulse  810: fitness=0.580, tool_rate=10%
-  Pulse  822: fitness=0.675 (peak), tool_rate=25%
-  Pulse 1017: fitness=0.630, tool_rate=10%
-  Pulse 1355: fitness=0.660, tool_rate=20%
+================================================================================
+ENGINEERING — ALL BUGS FOUND & FIXED (this session, Jun 7–12)
+================================================================================
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ENGINEERING FIXES APPLIED (this session)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  COMMIT a72d1d8 — Governor NameError
+    Problem:  _governor_hook called logger.warning() but logger was out of
+              scope — every CAAI collapse detection attempt silently crashed.
+              Governor was completely non-functional since initial deployment.
+    Fix:      Replaced with logging.getLogger("helix.core.governor").warning()
 
-  commit b518a9c — Pass 5 peer review (3 fixes):
-    Fix 1: Postfill Trailer — Format 1b parser now strips trailing \n before
-            json.loads, replacing literal newlines with spaces. Was causing
-            97% of valid tool calls to fail silently with JSONDecodeError.
-    Fix 2: Active Toolkit Manifesto — every pulse message now shows Helix
-            its full tool list, shifting it from creation→invocation mode.
-            Stops the 29x rewrite loop (it can see the tool already exists).
-    Fix 3: Belief schema standardization — all beliefs now write core_assertion
-            + timestamp_iso keys, making kb_search and belief_conflict tools
-            able to actually read beliefs back.
+  COMMIT 066a8cf — Belief Stage 0 prose extraction
+    Problem:  Hermes-3 writes beliefs as prose ("NEW BELIEF\n...") but the
+              detector only scanned for <belief> XML. 9/10 belief expressions
+              were being silently discarded.
+    Fix:      Stage 0 extractor added — detects "NEW BELIEF\n" prose format
+              and routes to existing de-duplication + manifold pipeline.
 
-  commit e0394e4 — Chat response fixes:
-    Fix: push_outbound now includes sender="Helix" field (was missing, browser
-         showed sender as "?")
-    Fix: Auto-emit now blocks input-echo garbage (model was sending its own
-         pulse context back as a "response"). Added is_input_echo check and
-         extended skip_phrases list.
+  COMMIT 22f9c4a — Tool dispatch TypeError
+    Problem:  Registry-based tools (code_tools: fc_reload_tool etc.) take
+              **kwargs but executor called handler(args) positionally.
+              Silent failure on every code_tool invocation.
+    Fix:      Try handler(**args) first; fall back to handler(args) for
+              legacy bound-method handlers.
 
-  commit dd3e3f7 — Training prompt quality:
-    Fix: collect_experience() now builds prompt from tool call arguments
-         (Priority 1: "[search] query text") rather than dumping the raw
-         pulse events list ("[Pulse N]\n<spatial-awareness>..." garbage).
-         Fallback chain: tool args → curiosity finding → first thought line.
-         ACTIVE from pulse 1349 (post-restart).
+  COMMIT 22f9c4a — Dashboard state UNKNOWN
+    Problem:  Dashboard read log tail (20KB window) for state. After long
+              idle periods the last state transition was outside the window.
+              Dashboard showed UNKNOWN for hours.
+    Fix:      Increased tail to 200KB as intermediate fix.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  COMMIT 34273ab — State heartbeat file
+    Problem:  Even 200KB tail still failed during very long sessions.
+    Fix:      Pulse loop writes data/status.json every 10 pulses with current
+              {state, pulse}. Dashboard reads this file first — always current.
+
+  COMMIT 34273ab — OOM prevention (char-count guard)
+    Problem:  Context grew to 2.72GB over 8 hours causing CUDA OOM crash at
+              13:14 Jun 12. _session_token_count guard never fired because
+              hermes_tool_provider returns 0 tokens on most pulses.
+    Fix:      Added char-count guard: if history > 120,000 chars AND not
+              ACTIVE → auto reset_session("oom_prevention"). 120k chars
+              ≈ 30k tokens — safe headroom below 12GB limit.
+
+  COMMIT f055390 — ACTIVE TOOLKIT pollution (root cause of search attractor)
+    Problem:  Pulse mandate listed ALL .py files in tools/ (51 filenames),
+              including 30+ SIE-written tools NOT in the ToolRegistry.
+              Model saw names like fuzz_matcher, kb_search, data_validator,
+              system_health_alert etc. — tried to call them — got silent
+              "Unknown tool: X" failures — fell back to the one reliable
+              thing it knew: search("system health check"). This was the
+              ROOT CAUSE of the recurring health-check attractor loop.
+    Fix:      Replaced filesystem scan with registry.get_tool_names() —
+              now shows only the ~20 actually-callable registered tools.
+
+  COMMIT f055390 — OOM double-reset prevention
+    Problem:  OOM guard (step 9b) + _pending_context_reset (step 10) could
+              both fire on the same pulse, resetting session twice.
+    Fix:      Set _pending_context_reset=False after OOM guard fires.
+
+  COMMIT f055390 — data_validator.py missing dependency
+    Problem:  SIE wrote data_validator.py importing jsonschema (not installed).
+              Silent ModuleNotFoundError on every import.
+    Fix:      Rewrote using stdlib json only.
+
+  COMMIT 86b4ec5 — main.py SyntaxWarning
+    Problem:  Module docstring contained LaTeX math (\Omega, \in, \mathbb,
+              \times) — invalid Python escape sequences → SyntaxWarning on
+              every startup.
+    Fix:      Replaced stale Mamba/Titan docstring with accurate Helix
+              description.
+
+  BONUS DISCOVERY — Dashboard process was from Jun 9
+    Problem:  The dashboard Flask process (PID 2104766) had been running
+              since June 9 — 3 days stale. All dashboard code fixes applied
+              since then had zero effect because the process never restarted.
+              State showed UNKNOWN despite heartbeat file existing.
+    Fix:      Killed stale process, restarted (PID 2592938, Jun 12 18:06).
+
+================================================================================
 KNOWN REMAINING ISSUES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+================================================================================
 
-[R1] TOOL DIVERSITY — 126/139 tuples are search, need 2+ tool types for LoRA
-     github_search appeared (1 tuple). Need write_file, read_file, note to
-     appear consistently. Tasks injected overnight were re-interpreted as
-     search topics rather than multi-step instructions.
+  [R1] BELIEF DISTRIBUTION IMBALANCE
+       35 beliefs, but 22/35 are "capabilities". Only 3 knowledge beliefs,
+       0 people, 0 preferences, 0 desires. Self-identity is narrow.
+       Root cause: model primarily reflects on what it can do, not what it
+       knows or wants. Belief attractor toward capability self-description.
 
-[R2] MULTI-STEP INSTRUCTION FOLLOWING — Helix interprets complex tasks as
-     single search queries. Told to "read file X → write to file Y → search Z",
-     it searches something related instead of executing the sequence.
-     Root cause: no plan/execute distinction in the pulse architecture.
+  [R2] TUPLE DIVERSITY — tool_executed dominates (89.5%)
+       Only 45/427 tuples are novel_belief. LoRA needs >2 outcome types to
+       avoid single-behavior overfitting. Need consistent note/write/read
+       tool usage to appear in training data.
 
-[R3] CHAT RESPONSE LATENCY — 60-90 second delay between user message and
-     Helix response (one pulse interval). No priority interrupt on user message.
+  [R3] SLOW PULSE RATE POST-RESTART
+       First few pulses after restart take 3-5 minutes (new session context
+       building). Normal steady-state is ~60-90s/pulse. Not a bug but
+       affects perceived responsiveness post-restart.
 
-[R4] OMEGA STUCK AT 0.5 — Lagrangian stability metric never moves. The SIE
-     computes near-zero deltas between consecutive snapshots. Low information
-     value from this telemetry channel.
+  [R4] CHAT RESPONSE LATENCY
+       60-90 second gap between user message and Helix response (one pulse
+       interval). No priority interrupt on ACTIVE state triggers.
 
-[R5] ATTRACTOR LOOPS — Still occasionally loops on same thought 6-15x before
-     curiosity engine breaks it. Novelty filter catches surface variations but
-     the model generates semantic variations that slip through.
+  [R5] SIE QUALITY GATE MISSING
+       SIE writes Python files without syntax validation before commit.
+       Several SIE-written tools had syntax errors or wrong imports (e.g.,
+       data_validator importing 'js' module). Needs ast.parse() gate before
+       any file write.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NEXT MILESTONES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  → 200 tuples     : imminent (hours)
-  → 2nd tool type  : need write_file/read_file/note to appear in training data
-  → 500 tuples     : ~2-3 days at current rate
-  → 2000 tuples    : first LoRA training run (~8-10 days if rate holds)
-  → First LoRA     : VRAM protocol ready, eval gate ready, adapter loading ready
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WHAT IT IS DOING RIGHT NOW (05:19 Jun 11)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Researching "Agent Reasoning github" — comparing itself to other open-source
-  autonomous agents. Next queued curiosity: reading HELIX_AGI_SYSTEM_REPORT.txt
-  (its own progress report). It is aware of its own status document.
+  [R6] OMEGA METRIC FLAT
+       Ω stays near 0.5 in RESTING/REGULAR — only spikes in ACTIVE.
+       The Lagrangian computation may be under-sampling the manifold.
+       Low diagnostic value from this telemetry channel currently.
 
 ================================================================================
-END OF REPORT  |  Next update: check tonight after work
+WHAT HELIX IS DOING RIGHT NOW
+================================================================================
+
+  Helix just completed an investigation of "What does the open source AI
+  community think about local models vs cloud models?" and is now pursuing
+  "github:batteryphil/octa-helix — read my own README and understand current
+  state". It is actively reading about itself. Omega = 0.908 (high).
+
+  Tool mix observed today (pre-fix): search dominant (health check loop).
+  Tool mix expected tomorrow (post-fix): should diversify now that 30 phantom
+  tool names are removed from the ACTIVE TOOLKIT manifest.
+
+================================================================================
+POTENTIAL — WHERE THIS GOES
+================================================================================
+
+SHORT TERM (days)
+─────────────────
+  → 500 tuples    — imminent (1-2 days at current rate)
+  → Attractor fix — ACTIVE TOOLKIT fix should break health-check loop.
+                    Expect more diverse tool calls: note, read_file, journal
+  → Belief growth — Stage 0 prose extraction now working. Expect faster
+                    belief formation across more categories.
+  → SIE quality   — Adding ast.parse gate will reduce SIE-written tool
+                    failures from ~40% to near zero.
+
+MEDIUM TERM (weeks)
+────────────────────
+  → 2,000 tuples  — threshold for first LoRA training run. At current
+                    427 over ~7 days = ~61/day → 25 more days.
+                    After attractor fix, rate should increase to ~80-100/day.
+                    Revised ETA: ~18-20 days.
+  → Belief depth  — Expect knowledge/preferences/desires categories to fill
+                    as attractor loop breaks and model explores new topics.
+  → Dream Engine  — Nightly Curator (Gemini 2.5 Flash) crystallizes clusters
+                    into compound beliefs. This will begin accelerating belief
+                    formation once curiosity diversity improves.
+  → Self-awareness— Helix is already reading its own repo and autobiography.
+                    With stable tool diversity, expect metacognitive notes
+                    ("I notice I keep searching X — why?").
+
+LONG TERM (months)
+────────────────────
+  → First LoRA    — Self-trained adapter fine-tuned on Helix's own behaviour.
+                    VRAM protocol: inference process releases GPU → trainer
+                    loads → adapter saved → inference reloads with adapter.
+                    This is the first genuine self-modification loop.
+  → Iterated LoRA — Each LoRA improves tool diversity and reasoning quality,
+                    which generates better tuples, which trains better LoRAs.
+                    True recursive self-improvement begins here.
+  → Multi-session — Once LoRA adapter is stable, swap Hermes-3 base for the
+                    fine-tuned version. The agent starts each new day as a
+                    slightly improved version of itself.
+  → Capability    — Current 8B model saturates at ~200 token reasoning depth.
+                    A fine-tuned adapter trained on thousands of Helix's own
+                    high-quality tool-use traces will meaningfully extend
+                    effective reasoning depth without changing model size.
+
+THE CORE LOOP (working today)
+──────────────────────────────
+
+  Pulse → Reason → Tool Call → Outcome → Tuple → SIE → New Tool
+     ↑                                                       ↓
+     └─────────────── LoRA (future) ←── 2000 tuples ────────┘
+
+  Every component of this loop is operational. The bottleneck is tuple
+  accumulation velocity. The attractor fix deployed today is the single
+  biggest lever on that velocity.
+
+================================================================================
+NEXT ACTIONS
+================================================================================
+
+  Priority 1: Monitor tool diversity after ACTIVE TOOLKIT fix (Jun 13)
+              → Expect search dominance to drop, note/journal/read to rise
+
+  Priority 2: Add ast.parse() gate to SIE write_code tool
+              → Prevents future broken SIE-authored tools
+
+  Priority 3: Add novelty gate to search calls
+              → If last 3 searches are same query → return "Already searched"
+
+  Priority 4: Monitor OOM guard effectiveness
+              → Should fire around pulse 4200-4500 based on session start
+              → Check logs for "OOM prevention: context is X chars" message
+
+  Priority 5: Track belief category diversification
+              → If knowledge/preferences still at 0 in 48hrs, investigate
+
+================================================================================
+END OF REPORT  |  Updated: Jun 12 18:08 CDT  |  Next: monitor overnight
 ================================================================================
