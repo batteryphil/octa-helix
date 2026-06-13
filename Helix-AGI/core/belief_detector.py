@@ -551,16 +551,13 @@ def _store_belief_direct(
         added = _belief_store.add_belief(
             category=category,
             belief_id=belief_id,
-            content=standardized_content,          # backward compat key
+            content=standardized_content,
             confidence=0.5,
             source="belief_detector",
             verifications=1.0,
             stability_index=max(0.3, 0.5 + encoding_delta.get("delta_omega", 0.0)),
             memory_refs=[memory_id] if memory_id > 0 else [],
             encoding_lagrangian=encoding_lagrangian,
-            # Standardized schema — always present, always same keys:
-            core_assertion=standardized_content,
-            timestamp_iso=_dt.datetime.utcnow().isoformat() + "Z",
         )
         if added:
             logger.info(

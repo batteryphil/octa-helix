@@ -482,21 +482,9 @@ Fix the error. Key rules:
             self._revert(proposal, backup_content)
         else:
             logger.info(f"[SIE] Change COMMITTED (Δ={verdict['delta']:+.4f}, verdict={verdict['verdict']})")
-            # Auto-commit to git
-            try:
-                import subprocess
-                from tools.code_tools import HELIX_AGI_ROOT
-                subprocess.run(
-                    ["git", "add", path],
-                    cwd=str(HELIX_AGI_ROOT), capture_output=True, timeout=10
-                )
-                msg = f"self-evolve: {proposal.get('description', 'improvement')[:60]}"
-                subprocess.run(
-                    ["git", "commit", "-m", msg],
-                    cwd=str(HELIX_AGI_ROOT), capture_output=True, timeout=10
-                )
-            except Exception as ge:
-                logger.debug(f"[SIE] Git commit skip: {ge}")
+            # NOTE: git commits are intentionally blocked — the agent may not
+            # commit to the repository autonomously. The evolution journal
+            # records all changes for traceability. Git history is owner-only.
 
         # Record in journal
         if self._journal:

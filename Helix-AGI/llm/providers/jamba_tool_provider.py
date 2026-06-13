@@ -5,13 +5,13 @@ AI21-Jamba-1.5-Mini is a hybrid Mamba-Transformer MoE model:
   - 52B total parameters, 12B active (MoE routing)
   - Native <tool_call> function calling (same format as Hermes-3)
   - 256K context window with O(1) SSM state (no KV cache growth)
-  - Loaded in bf16, no quantization (bnb blocks CPU offload)
+  - Loaded in INT8 (bitsandbytes) — halves weight RAM vs bf16
 
-VRAM split with device_map="auto":
-  GPU  (~10 GB):  active Transformer + MoE expert layers
-  CPU  (~100 GB): remaining weight shards in system RAM (124GB total)
-  Disk offload:   safety net only — should not be needed with 110GiB CPU limit
-  SSM state: tiny constant (~KB) regardless of context length
+Memory split with device_map="auto" + load_in_8bit:
+  GPU  (~8 GB):  hot Transformer/attention/MoE layers (INT8)
+  CPU  (~52 GB): remaining weight shards in system RAM (INT8 = ~52GB total)
+  INT8 quantization: 52B × 1 byte ≈ 52GB vs 104GB bf16
+  Disk offload: safety net only
 
 Model ID: ai21labs/AI21-Jamba-1.5-Mini
 """
@@ -83,26 +83,33 @@ VRAM_LOCK = _threading.Event()
 VRAM_LOCK.set()
 
 
+# Maximum input tokens before truncating history (prevents activation OOM).
+# Jamba 256K window, but full context = huge CPU RAM activations.
+# Cap at 6K tokens (~24K chars) for stable 124GB RAM inference.
+_MAX_INPUT_TOKENS = 6_000
+
+
 def _load_engine():
-    """Load Jamba-1.5-Mini in bf16 with GPU+CPU RAM split via device_map.
+    """Load Jamba-1.5-Mini in INT8 with GPU+CPU device_map=auto.
 
-    bitsandbytes (any quantization mode) blocks CPU offloading in recent versions.
-    Loading in native bf16 with explicit max_memory limits sidesteps this entirely.
+    INT8 quantization via bitsandbytes halves weight RAM vs bf16:
+      bf16: 52B × 2 bytes = ~104GB
+      int8: 52B × 1 byte  = ~52GB
 
-    Memory split (124GB RAM machine):
-      GPU  (10 GB):  hot transformer/attention layers
-      CPU  (110 GB): remaining weight shards — enough headroom for all 52B params
-      Disk:          offload_folder set as safety net, should never be triggered
+    device_map="auto" lets HF split layers across GPU (hot) + CPU (cold).
+    With 12GB GPU and 124GB RAM this gives stable inference with ~70GB
+    headroom for activations — enough to never OOM.
     """
     global _model, _tokenizer, _device
     if _model is not None:
         return
 
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    import gc
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
     import os
 
-    logger.info(f"Loading {MODEL_ID} — bf16, GPU+CPU split (no quantization)...")
-    logger.info("52B MoE model: ~10GB GPU + ~110GB CPU RAM. First load ~8-12 min.")
+    logger.info(f"Loading {MODEL_ID} — INT8 quantized, GPU+CPU auto split...")
+    logger.info("52B MoE: INT8 ~52GB weights. GPU gets hot layers, CPU gets rest.")
     t0 = time.time()
 
     _tokenizer = AutoTokenizer.from_pretrained(
@@ -113,39 +120,43 @@ def _load_engine():
     if _tokenizer.pad_token is None:
         _tokenizer.pad_token = _tokenizer.eos_token
 
-    _attn_impl = "eager"
-    try:
-        import flash_attn  # noqa: F401
-        _attn_impl = "flash_attention_2"
-        logger.info("Flash Attention 2 available")
-    except ImportError:
-        pass
-
-    # RTX 3060 has 12GB VRAM. Jamba 52B in bf16 needs ~104GB weights + 4-5GB
-    # for KV cache/activations during inference — impossible to fit both on 12GB.
-    # Solution: load everything to CPU RAM (124GB available) and run inference there.
-    # Slow (~30-60s/pulse) but stable. The GPU embedder still runs on CUDA separately.
-    max_mem = {"cpu": "120GiB"}
     offload_dir = str(Path(__file__).resolve().parents[3] / "offload_cache")
     os.makedirs(offload_dir, exist_ok=True)
 
+    # INT8 config: llm_int8_enable_fp32_cpu_offload=True allows CPU offload
+    # of non-quantized layers (embeddings, layer norms stay in fp32 on CPU).
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
+
+    # device_map="auto" splits layers: GPU (12GB) gets hot layers,
+    # CPU gets remaining. With INT8 weights (~52GB), RAM usage is ~60-70GB
+    # including activations — well within 124GB.
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        device_map="cpu",
-        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        quantization_config=bnb_config,
         trust_remote_code=True,
         offload_folder=offload_dir,
     )
     _model.eval()
 
-    _device = torch.device("cpu")
+    # Primary inference device is wherever the first layer landed
+    _device = next(_model.parameters()).device
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     elapsed = time.time() - t0
-    gpu_gb  = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+    gpu_gb = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+    ram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
     logger.info(
-        f"Jamba-1.5-Mini ready ✅  GPU: {gpu_gb:.1f} GB  "
-        f"(CPU RAM: remainder)  loaded in {elapsed:.0f}s"
+        f"Jamba-1.5-Mini ready ✅  INT8 quantized  "
+        f"GPU: {gpu_gb:.1f}GB used / {ram_gb:.0f}GB  "
+        f"loaded in {elapsed:.0f}s"
     )
 
 
@@ -426,7 +437,10 @@ class JambaToolSession:
         return out
 
     def get_history_size(self) -> int:
-        return sum(len(str(m.get("content", ""))) for m in self._history)
+        # Include system prompt estimate so pulse_loop OOM guard sees true context size
+        history_chars = sum(len(str(m.get("content", ""))) for m in self._history)
+        system_chars = len(self._system)
+        return history_chars + system_chars
 
     def clear_history(self):
         self._history = []
@@ -486,10 +500,20 @@ class JambaToolSession:
                 if str(infer_device) == "meta" or infer_device is None:
                     infer_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
                     self._device = infer_device
-                torch.cuda.empty_cache()  # clear activation fragments before THINK
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 think_ids = self._tokenizer(
                     think_prompt, return_tensors="pt"
-                ).input_ids.to(infer_device)
+                ).input_ids
+                # Truncate if input exceeds token budget to prevent activation OOM
+                if think_ids.shape[1] > _MAX_INPUT_TOKENS:
+                    logger.warning(
+                        f"THINK input truncated {think_ids.shape[1]} → {_MAX_INPUT_TOKENS} tokens"
+                    )
+                    think_ids = think_ids[:, -_MAX_INPUT_TOKENS:]
+                think_ids = think_ids.to(infer_device)
                 _t0_think = time.time()
                 with torch.no_grad():
                     think_out = self._model.generate(
@@ -504,6 +528,11 @@ class JambaToolSession:
                     think_out[0][think_ids.shape[1]:],
                     skip_special_tokens=True,
                 ).strip()
+                # Free activation memory immediately after THINK
+                del think_out, think_ids
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 logger.warning(f"JAMBA THINK: {think_text[:200]!r}")
 
                 if think_text:
@@ -565,14 +594,21 @@ class JambaToolSession:
                     prompt = prompt + _prefill_str
                     logger.warning(f"[jamba] Mandate prefill: seed='{seed_tool}'")
 
+                import gc
                 infer_device = self._device
-                if str(infer_device) == "meta" or infer_device is None:
-                    infer_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-                    self._device = infer_device
-                torch.cuda.empty_cache()  # clear activation fragments before ACT
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 input_ids = self._tokenizer(
                     prompt, return_tensors="pt"
-                ).input_ids.to(infer_device)
+                ).input_ids
+                # Truncate to prevent activation OOM on long contexts
+                if input_ids.shape[1] > _MAX_INPUT_TOKENS:
+                    logger.warning(
+                        f"ACT input truncated {input_ids.shape[1]} → {_MAX_INPUT_TOKENS} tokens"
+                    )
+                    input_ids = input_ids[:, -_MAX_INPUT_TOKENS:]
+                input_ids = input_ids.to(infer_device)
 
                 _t0_act = time.time()
                 with torch.no_grad():
@@ -590,9 +626,17 @@ class JambaToolSession:
                     out[0][input_ids.shape[1]:], skip_special_tokens=False
                 ).strip()
                 raw_for_parse = (_prefill_str + raw) if _prefill_str else raw
+                # Free ACT activations immediately
+                del out, input_ids
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
             except Exception as e:
                 logger.error(f"Jamba generation error: {e}")
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 final_response = f"(generation error: {e})"
                 break
 

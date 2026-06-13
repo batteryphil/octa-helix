@@ -47,7 +47,12 @@ class DashboardComms:
         """Read the full message state from disk."""
         try:
             with open(self._path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            # Guard: concurrent writes can corrupt the file to a list
+            if not isinstance(data, dict):
+                logger.warning("dashboard_messages.json was not a dict — resetting")
+                return {"inbound": [], "outbound": []}
+            return data
         except (json.JSONDecodeError, FileNotFoundError):
             return {"inbound": [], "outbound": []}
 
