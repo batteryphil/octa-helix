@@ -23,8 +23,8 @@ from typing import Iterator, Optional
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-CKPT_DIR    = os.path.join(PROJECT_DIR, "checkpoints_2.7b")
-VOCAB_SIZE  = 50288  # matches phase_1_deepspeed_trainer.py
+CKPT_DIR    = os.path.join(PROJECT_DIR, "legacy_1.4b_project", "titan_checkpoints")
+VOCAB_SIZE  = 50304  # 1.4B model (mamba-1.4b-hf transfer)
 
 ARM_IDENTITIES = [
     "General Language", "Symbolic Math", "Logical Reasoning", "Code Syntax",
@@ -40,6 +40,8 @@ _singleton_engine: "TitanInference | None" = None
 def get_engine(checkpoint: str = "auto") -> "TitanInference":
     """Return the warm singleton engine, loading it on first call."""
     global _singleton_engine
+    if checkpoint == "auto":
+        checkpoint = "legacy_1.4b_project/titan_checkpoints/phase_sft20_best.pt"
     if _singleton_engine is None:
         _singleton_engine = TitanInference(checkpoint=checkpoint)
         _singleton_engine.load()
@@ -126,31 +128,59 @@ class TitanInference:
         if self.tokenizer.eos_token_id is None:
             self.tokenizer.eos_token_id = 0
 
-        priority = ["phase_sft3_sprint.pt", "phase_sft.pt", "phase_3j.pt", "phase_3.pt", "phase_2.pt", "phase_1.pt"]
+        priority = [
+            "phase_sft20_best.pt", "phase_sft20_done.pt",
+            "phase_sft19_best.pt", "phase_sft.pt",
+            "phase_3r.pt", "phase_3j.pt", "phase_2.pt", "phase_1.pt"
+        ]
         if self.checkpoint != "auto":
             ckpt_path, phase = self.checkpoint, "sft"
+            # Ensure path is absolute or relative to the caller
+            if not os.path.isabs(ckpt_path):
+                if os.path.exists(ckpt_path):
+                    ckpt_path = os.path.abspath(ckpt_path)
+                else:
+                    ckpt_path = os.path.join(PROJECT_DIR, ckpt_path)
+            else:
+                ckpt_path = os.path.abspath(ckpt_path)
         else:
             ckpt_path, phase = None, "1"
             for name in priority:
                 c = os.path.join(CKPT_DIR, name)
                 if os.path.exists(c):
                     ckpt_path = c
-                    phase = name.replace("phase_","").replace(".pt","")
+                    raw = name.replace("phase_","").replace(".pt","")
+                    # Normalise: sft20_best → sft, 3j → 3j, etc.
+                    if raw.startswith("sft"):
+                        phase = "sft"
+                    else:
+                        phase = raw
                     break
 
         if ckpt_path is None:
             raise FileNotFoundError(f"No checkpoint in {CKPT_DIR}")
 
         print(f"[Titan] Loading {ckpt_path} (phase={phase})...")
-        self.model = Mamba3Titan(vocab_size=VOCAB_SIZE, d_model=2560, n_layers=64,
+        self.model = Mamba3Titan(vocab_size=VOCAB_SIZE, d_model=2048, n_layers=48,
                                   mimo_paths=8, use_gradient_checkpointing=False)
         self.model.set_phase(phase if phase_override == "auto" else phase_override)
-        ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=True)
-        self.model.load_state_dict(ckpt['model'], strict=False)
+        ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+        sd   = ckpt.get('model', ckpt.get('model_state_dict', ckpt))
+        self.model.load_state_dict(sd, strict=False)
         self.model = self.model.to(torch.bfloat16).to(DEVICE)
         self.model.eval()
         step = int(ckpt.get('step', 0))
         print(f"[Titan] Ready. Phase={phase}  Step={step:,}  Device={DEVICE}")
+        
+        print("[Titan] Warming up Triton kernels to prevent thread deadlocks...")
+        try:
+            for _ in self.stream("Warmup", max_new_tokens=2):
+                pass
+            print("[Titan] Warmup complete.")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"[Titan] Warmup failed: {e}")
 
     # ── Deep Think: each arm reasons independently ────────────────────────────
     @torch.no_grad()
@@ -227,6 +257,7 @@ class TitanInference:
         repetition_penalty: float = 1.15,
         context_thoughts:   Optional[list] = None,
         arm_bias:           Optional[list] = None,  # additive gate logit biases from Helix arm router
+        **kwargs
     ) -> Iterator[tuple[str, dict]]:
         """
         Yields (token_str, arm_info) for each generated token.
@@ -250,9 +281,11 @@ class TitanInference:
                     f"[Internal reasoning]\n{thought_context}\n[Response]\nAssistant:"
                 )
 
+        # Always send to the device where the model actually lives
+        _model_device = next(self.model.parameters()).device
         ids     = self.tokenizer.encode(gen_prompt)
         id_list = list(ids)
-        id_tens = torch.tensor([id_list], dtype=torch.long, device=DEVICE)
+        id_tens = torch.tensor([id_list], dtype=torch.long, device=_model_device)
 
         # ── CAAI Governor State ─────────────────────────────────────────────────
         collapse_warning_level = 0
@@ -278,21 +311,34 @@ class TitanInference:
 
 
         try:
+            try:
+                if not kwargs.get('use_cache', True):
+                    cg = None
+                else:
+                    from mamba_ssm.utils.generation import InferenceParams
+                    cg = InferenceParams(max_seqlen=len(id_list) + max_new_tokens, max_batch_size=1)
+            except ImportError:
+                cg = None
+
+            # Prefill Phase
+            with torch.autocast(device_type=_model_device.type, dtype=torch.bfloat16):
+                logits, _ = self.model(id_tens, loop_idx=0)
+                
+            if cg is not None:
+                cg.seqlen_offset = id_tens.shape[1]
+
             for _ in range(max_new_tokens):
-                with torch.autocast(device_type=DEVICE.type, dtype=torch.bfloat16):
-                    logits, _ = self.model(id_tens, loop_idx=0)
-                
                 t = self.model.last_telemetry
-                
+            
                 # ── CAAI Runtime Governor: Monitor ──────────────────────────────────
                 entropy = float(t.get("entropy", 0.0))
                 collapse = float(t.get("arm_collapse_metric", 1.0))
-                
+            
                 if entropy < 0.05 and collapse > 0.90:
                     collapse_warning_level += 1
                 else:
                     collapse_warning_level = max(0, collapse_warning_level - 1)
-                    
+                
                 # ── CAAI Runtime Governor: Intervention A (Router Dampening) ────────
                 if collapse_warning_level > 50:
                     top_arms = t.get("top_arms", [])
@@ -301,40 +347,38 @@ class TitanInference:
                         self.model.domain_router.bias.data[dominant_arm] -= 5.0
                     self.model.router_temp.data[0] = 1.5
                     collapse_warning_level = 0
-                    
+                
                 # Cooldown the spike and heal the dampening linearly/exponentially
                 if self.model.router_temp.data[0] > orig_router_temp[0]:
                     self.model.router_temp.data[0] -= 0.05
                     self.model.router_temp.data[0] = max(orig_router_temp[0], self.model.router_temp.data[0])
-                
+            
                 # Heal bias by 10% each step towards original
                 bias_diff = orig_router_bias - self.model.domain_router.bias.data
                 self.model.domain_router.bias.data += bias_diff * 0.1
-                    
+                
                 # ── CAAI Runtime Governor: Intervention B (Resistance Spring) ───────
                 if id_list[-1] == think_id:
                     inside_think_block = True
                     think_token_count = 0
-                    
+                
                 if inside_think_block:
                     think_token_count += 1
                     arm_weights = t.get('arm_weights', [0.0] * self.model.mimo_paths)
-                    
+                
                     if len(arm_weights) >= 4:
                         complex_weight = arm_weights[1] + arm_weights[3]
                         if complex_weight > 0.20:
                             decay_penalty = min(0.0, -15.0 + (think_token_count * 0.1))
                             logits[0, -1, end_think_id] += decay_penalty
-                            
+                        
                 if id_list[-1] == end_think_id:
                     inside_think_block = False
 
                 next_id = _sample(logits[0, -1, :], id_list,
                                    temperature, top_p, repetition_penalty)
                 id_list.append(next_id)
-                id_tens = torch.tensor([id_list], dtype=torch.long, device=DEVICE)
 
-                t = self.model.last_telemetry
                 arm_info = {
                     "top_arms":     t.get("top_arms", []),
                     "arm_weights":  t.get("arm_weights", []),
@@ -350,6 +394,19 @@ class TitanInference:
 
                 if next_id == self.tokenizer.eos_token_id:
                     break
+
+                # Setup tensor for next pass
+                if cg is not None:
+                    id_tens = torch.tensor([[next_id]], dtype=torch.long, device=_model_device)
+                else:
+                    id_tens = torch.tensor([id_list], dtype=torch.long, device=_model_device)
+
+                # Decode next step
+                with torch.autocast(device_type=_model_device.type, dtype=torch.bfloat16):
+                    logits, _ = self.model(id_tens, loop_idx=0)
+
+                if cg is not None:
+                    cg.seqlen_offset += 1
         finally:
             # Always restore model parameters, even if generator is closed early
             self.model.domain_router.bias.data.copy_(orig_router_bias)

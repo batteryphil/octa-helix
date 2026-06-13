@@ -5,7 +5,7 @@ import torch.utils.checkpoint as checkpoint
 from typing import Optional, List
 
 try:
-    from mamba_ssm import Mamba3
+    from mamba_ssm import Mamba
     HAS_MAMBA = True
 except ImportError:
     HAS_MAMBA = False
@@ -80,29 +80,16 @@ class RealMambaSSM(nn.Module):
         return F.linear(y * F.silu(z), self.out_proj.weight)
 
     def _selective_scan(self, x: torch.Tensor) -> torch.Tensor:
-        """Fallback pure-PyTorch sequential scan (stable)."""
+        """Fallback pure-PyTorch parallel cumsum scan (used only if mamba_ssm unavailable)."""
         dbl       = F.linear(x, self.x_proj.weight)
         dt_r, B_p, C = dbl.split([self.dt_rank, self.d_state, self.d_state], dim=-1)
         dt        = F.softplus(F.linear(dt_r, self.dt_proj.weight, self.dt_proj.bias))
-        A         = -torch.exp(self.A_log.float()).to(x.dtype) # (D, S)
-        
-        B_dim, L, D = x.shape
-        S = self.d_state
-        y = torch.zeros((B_dim, L, D), device=x.device, dtype=x.dtype)
-        h = torch.zeros((B_dim, D, S), device=x.device, dtype=x.dtype)
-        
-        for t in range(L):
-            dt_t = dt[:, t, :]     # (B, D)
-            x_t  = x[:, t, :]      # (B, D)
-            B_t  = B_p[:, t, :]    # (B, S)
-            C_t  = C[:, t, :]      # (B, S)
-            
-            dA = torch.exp(dt_t.unsqueeze(-1) * A.unsqueeze(0)) # (B, D, S)
-            dBx = (dt_t * x_t).unsqueeze(-1) * B_t.unsqueeze(1) # (B, D, S)
-            
-            h = dA * h + dBx
-            y[:, t, :] = (h * C_t.unsqueeze(1)).sum(dim=-1)
-            
+        A         = -torch.exp(self.A_log.float()).to(x.dtype)
+        dtA       = torch.einsum('bld,ds->blds', dt, A)
+        log_A_cum = torch.cumsum(dtA, dim=1)
+        Bu        = torch.einsum('bld,bls->blds', dt * x, B_p)
+        h         = torch.exp(log_A_cum) * torch.cumsum(Bu * torch.exp(-log_A_cum), dim=1)
+        y         = torch.einsum('blds,bls->bld', h, C)
         return y + x * self.D.to(x.dtype)
 
 
@@ -153,24 +140,17 @@ class LowRankBridge(nn.Module):
 
 class MambaLayer(nn.Module):
     """Mamba SSM layer with pre-norm and residual."""
-    def __init__(self, d_model: int, expand: int = 2) -> None:
+    def __init__(self, d_model: int) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(d_model)
         if HAS_MAMBA:
-            self.ssm = Mamba3(d_model=d_model, d_state=128, expand=expand, headdim=64, ngroups=1, rope_fraction=0.5)
+            self.ssm = Mamba(d_model=d_model, d_state=16, d_conv=4, expand=2)
         else:
             # Full S6 selective scan — real Mamba, pure PyTorch
-            self.ssm = RealMambaSSM(d_model=d_model, d_state=16, d_conv=4, expand=expand)
+            self.ssm = RealMambaSSM(d_model=d_model, d_state=4, d_conv=4, expand=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if HAS_MAMBA:
-            residual = x
-            device_type = x.device.type if x.device.type in ['cuda', 'cpu'] else 'cpu'
-            with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-                x_ssm = self.ssm(self.norm(x))
-            return x_ssm.to(x.dtype) + residual
-        else:
-            return self.ssm(self.norm(x)) + x
+        return self.ssm(self.norm(x)) + x
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -206,8 +186,8 @@ class Mamba3Titan(nn.Module):
         # ── Input ────────────────────────────────────────────────────────────
         self.embedding      = nn.Embedding(vocab_size, d_model)
         self.cp             = ConceptPerceptron(d_model)
-        self.thalamic_primer = MambaLayer(d_model, expand=1)
-        self.bridge         = LowRankBridge(d_model, bottleneck=64)
+        self.thalamic_primer = MambaLayer(d_model)
+        self.bridge         = LowRankBridge(d_model)
 
         # ── Backbone (80 layers, split at midpoint for routing) ──────────────
         self.layers = nn.ModuleList([MambaLayer(d_model) for _ in range(n_layers)])
@@ -215,7 +195,7 @@ class Mamba3Titan(nn.Module):
 
         # ── MIMO Arms (16) ───────────────────────────────────────────────────
         self.mimo_reasoning_blocks = nn.ModuleList(
-            [MambaLayer(d_model, expand=1) for _ in range(mimo_paths)]
+            [MambaLayer(d_model) for _ in range(mimo_paths)]
         )
 
         # ── Routing ──────────────────────────────────────────────────────────
@@ -280,7 +260,7 @@ class Mamba3Titan(nn.Module):
         # GPU-only optimizer state that fits in the remaining VRAM headroom.
         # ── Backbone: frozen in 3j/3r/sft (pretrained, don't disturb) ───────────
         # EXCEPT for SFT embeddings where we must learn the new <think> tokens!
-        backbone_frozen = phase in ('2', '3', '3j', '3r', 'sft')
+        backbone_frozen = phase in ('3j', '3r', 'sft')
         
         for p in self.embedding.parameters():
             # In SFT, we must unfreeze embeddings to learn <think>
@@ -405,7 +385,7 @@ class Mamba3Titan(nn.Module):
         # ── First half of backbone (layers 0 … mid-1) ────────────────────────
         for i, layer in enumerate(self.layers[:self._mid]):
             if self.training and self.use_gradient_checkpointing:
-                x = checkpoint.checkpoint(layer, x, use_reentrant=True)
+                x = checkpoint.checkpoint(layer, x, use_reentrant=False)
             else:
                 x = layer(x)
             # ConceptPerceptron injection every 6 layers
@@ -523,10 +503,7 @@ class Mamba3Titan(nn.Module):
         # Compute each arm exactly once
         raw_arm_outs  = []
         for i in range(self.mimo_paths):
-            if self.training and getattr(self, 'use_gradient_checkpointing', False):
-                arm_out = checkpoint.checkpoint(self.mimo_reasoning_blocks[i], bridge_out, use_reentrant=True)
-            else:
-                arm_out  = self.mimo_reasoning_blocks[i](bridge_out)
+            arm_out  = self.mimo_reasoning_blocks[i](bridge_out)
             raw_arm_outs.append(arm_out)
 
         # ── ARM DIVERSITY LOSS ─────────────────────────────────────────────────
@@ -600,7 +577,7 @@ class Mamba3Titan(nn.Module):
         offset = self._mid
         for i, layer in enumerate(self.layers[self._mid:]):
             if self.training and self.use_gradient_checkpointing:
-                x = checkpoint.checkpoint(layer, x, use_reentrant=True)
+                x = checkpoint.checkpoint(layer, x, use_reentrant=False)
             else:
                 x = layer(x)
             if ((offset + i + 1) % 6 == 0):
@@ -608,9 +585,8 @@ class Mamba3Titan(nn.Module):
                 x = x + (self.cp_gate * torch.tanh(global_ctx))
 
         # ── Output ────────────────────────────────────────────────────────────
-        # Cast to norm_f weight dtype to prevent DeepSpeed ZeRO-3 dtype mismatch crashes
-        x      = self.norm_f(x.to(self.norm_f.weight.dtype))
-        logits = self.lm_head(x.to(self.lm_head.weight.dtype))
+        x      = self.norm_f(x)
+        logits = self.lm_head(x)
 
         # ── Telemetry (sampled to avoid overhead during training) ─────────────
         if not self.training or (self.training and torch.rand(1).item() < 0.20):

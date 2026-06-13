@@ -8,6 +8,17 @@
 # ==============================================================================
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export HF_HUB_DISABLE_TELEMETRY=1       # stop background pings that cause Bearer errors
+export HF_HUB_DISABLE_PROGRESS_BARS=1
+export TOKENIZERS_PARALLELISM=false     # avoids fork deadlock warning
+
+# ── Load credentials (HF_TOKEN etc.) ─────────────────────────────────────────
+SCRIPT_DIR_EARLY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR_EARLY}/.env" ] && source "${SCRIPT_DIR_EARLY}/.env"
+# Also use HF's own cached token if env var not set
+if [ -z "$HF_TOKEN" ] && [ -f "$HOME/.cache/huggingface/token" ]; then
+    export HF_TOKEN="$(cat $HOME/.cache/huggingface/token)"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="${SCRIPT_DIR}/training_log.txt"

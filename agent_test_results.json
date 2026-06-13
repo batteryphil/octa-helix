@@ -1,0 +1,92 @@
+[
+  {
+    "status": "\u2705",
+    "test": "Backend reachable",
+    "detail": "provider=Mistral-7B v0.3 (4-bit, tools), pulses=34"
+  },
+  {
+    "status": "\u2705",
+    "test": "Direct answer: capital of France",
+    "detail": "Reply: '[20:52:47] [DIRECT] [PRIMARY] [Urgent] Tester is asking for the capital of Franc' (4.0s)"
+  },
+  {
+    "status": "\u2705",
+    "test": "Web search tool call",
+    "detail": "Reply (44.2s): '[20:53:53] [DIRECT] [PRIMARY] Here is the full summary of the latest Mistral AI news:\n- They raised $100M in Series B fu...'"
+  },
+  {
+    "status": "\u274c",
+    "test": "File read tool call",
+    "detail": "Reply (120.5s): '(TIMEOUT \u2014 no reply)...'"
+  },
+  {
+    "status": "\u274c",
+    "test": "File write tool call",
+    "detail": "File exists: False | Reply: '(TIMEOUT \u2014 no reply)' (90.4s)"
+  },
+  {
+    "status": "\u274c",
+    "test": "Memory recall tool call",
+    "detail": "Reply (90.4s): '(TIMEOUT \u2014 no reply)...'"
+  },
+  {
+    "status": "\u274c",
+    "test": "Multi-step chain (search \u2192 write)",
+    "detail": "File written: False | Time: 150.7s | Reply: '(TIMEOUT \u2014 no reply)'"
+  },
+  {
+    "status": "\u2705",
+    "test": "Hook active: belief_detector",
+    "detail": "found in log"
+  },
+  {
+    "status": "\u2705",
+    "test": "Hook active: workflow_detector",
+    "detail": "found in log"
+  },
+  {
+    "status": "\u2705",
+    "test": "Hook active: engagement_monitor",
+    "detail": "found in log"
+  },
+  {
+    "status": "\u2705",
+    "test": "Hook active: co_occurrence_tracker",
+    "detail": "found in log"
+  },
+  {
+    "status": "\u2705",
+    "test": "Hook active: caai_governor",
+    "detail": "found in log"
+  },
+  {
+    "status": "\u274c",
+    "test": "Hook active: curiosity_engine",
+    "detail": "NOT in log"
+  },
+  {
+    "status": "\u2705",
+    "test": "Curiosity knowledge file exists",
+    "detail": "15 findings logged"
+  },
+  {
+    "status": "\u2705",
+    "test": "Curiosity entry format valid",
+    "detail": "Q: What does 'understanding' mean mathematically \u2014 is there a formal definition?"
+  },
+  {
+    "status": "\u2705",
+    "test": "Pulse count advancing",
+    "detail": "pulse_count=34"
+  },
+  {
+    "status": "\u2705",
+    "test": "Provider is Hermes or Mistral",
+    "detail": "provider=Mistral-7B v0.3 (4-bit, tools)"
+  },
+  {
+    "status": "\u2705",
+    "test": "User interrupt: response received",
+    "detail": "Reply in 24.1s: '[21:01:17] [DIRECT] [PRIMARY] [Urgent] Tester just said \"Rep'"
+  }
+]

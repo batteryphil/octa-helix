@@ -1,30 +1,30 @@
 {
-  "step": 1000,
+  "step": 8000,
   "phase": "1",
-  "timestamp": "2026-06-05 18:07:31",
-  "elapsed_s": 231.67,
-  "avg_rep": 0.052,
+  "timestamp": "2026-06-07 09:14:36",
+  "elapsed_s": 229.27,
+  "avg_rep": 0.096,
   "quality": "good",
   "samples": [
     {
       "prompt": "User: Write a Python function to compute the Fibonacci sequence.\nAssistant: <think>\n",
-      "output": "National established two have its, Pakistan and also be the students of the single in such ensure were continue at grow our fruits of 15s A un00. A are few can up that an long seeking it King may most plan by considered as everything will all available of one.",
-      "rep_rate": 0.08
+      "output": "An arithmetic series is an infinite series that converges absolutely in the reals (reals) and not allowed as a fraction or decimal place-point. The digits of this series are called B, and they consist entirely of zeros at most locations except for those on the border; these occur mainly around .",
+      "rep_rate": 0.098
     },
     {
       "prompt": "User: If John has 5 apples and eats 2, then buys 3 more, how many does he have?\nAssistant: <think>\n",
-      "output": "-\n Le) 2014), ArcticThe the statgeola place of population as create here.\n A piece can will its college for each in short to there is be make a whole necessary. The treatment by 11 was see your we you possibly would been that issues on accept are only write very required",
-      "rep_rate": 0.0
+      "output": "Jennifer wants to make her own fruit.\nJillian bought 6 oranges for $1,800 in total from the farmer's market, which means she spent 6 * 8 = $28 on peanuts (peanuts). She figures it out that Jiff would pay a total of $",
+      "rep_rate": 0.047
     },
     {
       "prompt": "User: Explain the difference between a list and a tuple in Python.\nAssistant: <think>\n",
-      "output": "Some is be can two out will at their to slowly, the opposition of create not the central exercise for our work which concern as some medicine need by generate add simply to all provide much measures that food must each purchase are days. It conditions of leave what he by this or approved to help with 3",
-      "rep_rate": 0.086
+      "output": "- n (the number of terms used is frequently encountered)\n- The term was originally defined by Erwin. It refers to an object or an abstract mathematical structure, as opposed to its use for reference data structures such as lists.\n- For items having certain size restrictions : \n- Spec",
+      "rep_rate": 0.12
     },
     {
       "prompt": "User: Who was the 16th president of the United States and what is he known for?\nAssistant: <think>\n",
-      "output": "C). 17-, James.2 will be an country, Tcyola can a world area to the new exposure of all unwate must this attention from the logic.\nThis such you continue are each ten relations that intersect recommendations of live time off designed Republic or have making in joining its demand",
-      "rep_rate": 0.041
+      "output": "How can you make a difference to make better decisions by making them in one area or two opposing causes, unless they can be prevented from doing so on?\nI'll show you three simple ways that I can make this decision. Here's my analysis. First we have these two variables (conven",
+      "rep_rate": 0.118
     }
   ]
 }

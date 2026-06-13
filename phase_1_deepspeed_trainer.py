@@ -20,11 +20,14 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 # ── HuggingFace authentication ───────────────────────────────────────────────
 # Must happen before any load_dataset() call.
 # Authenticated requests: higher rate limits, more stable streaming over long runs.
-_HF_TOKEN = os.environ.get("HF_TOKEN", "os.environ["HF_TOKEN"]")
+_HF_TOKEN = os.environ.get("HF_TOKEN", "")
 try:
     from huggingface_hub import login as hf_login
-    hf_login(token=_HF_TOKEN, add_to_git_credential=False)
-    print(f"[HF] Authenticated as hub user (token: {_HF_TOKEN[:8]}...)")
+    if _HF_TOKEN:
+        hf_login(token=_HF_TOKEN, add_to_git_credential=False)
+        print(f"[HF] Authenticated (token: {_HF_TOKEN[:8]}...)")
+    else:
+        print("[HF] No token set — streaming public datasets as guest.")
 except Exception as _e:
     print(f"[HF] Warning: could not authenticate — {_e}. Streaming as guest.")
 
@@ -48,7 +51,7 @@ except ImportError:
     HAS_HF = False
     print("WARNING: huggingface_hub, datasets, or transformers not found.")
 
-HF_TOKEN = os.environ.get("HF_TOKEN", "os.environ["HF_TOKEN"]")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GRACEFUL SHUTDOWN — catches SIGTERM (kill) and SIGINT (Ctrl+C)
@@ -455,13 +458,13 @@ def hf_streaming_generator(datasets_mix, tokenizer, seq_len=1024, start_step=0):
                 buf_ids.append(chunk)
                 buf_dom.append(src['domain_id'])
                 chunk_count += 1
-                if len(buf_ids) >= 1:
+                if len(buf_ids) >= 4:   # batch=4 fits within 12GB VRAM
                     yield (
-                        torch.tensor(buf_ids[:1],  dtype=torch.long),
-                        torch.tensor(buf_ids[:1],  dtype=torch.long),
-                        torch.tensor(buf_dom[:1],  dtype=torch.long),
+                        torch.tensor(buf_ids[:4],  dtype=torch.long),
+                        torch.tensor(buf_ids[:4],  dtype=torch.long),
+                        torch.tensor(buf_dom[:4],  dtype=torch.long),
                     )
-                    buf_ids, buf_dom = buf_ids[1:], buf_dom[1:]
+                    buf_ids, buf_dom = buf_ids[4:], buf_dom[4:]
 
         except StopIteration:
             exhausted[idx] = True
@@ -502,7 +505,11 @@ def get_dataloader_for_phase(phase, tokenizer, resume_step=0, seq_len=512):
         print("ERROR: HuggingFace libraries not found.")
         sys.exit(1)
 
-    login(token=HF_TOKEN)
+    if HF_TOKEN:
+        login(token=HF_TOKEN)
+        print(f"[HF] Logged in for dataset access.")
+    else:
+        print("[HF] No token — streaming public datasets as guest.")
     print(f"\n[DATA] Loading Phase {phase} datasets (streaming)...")
 
     # ── Phase 1: Full-spectrum pre-training (8 streams, all arm domains covered) ──
@@ -905,6 +912,13 @@ def train():
     if HAS_HF:
         print("Loading Tokenizer (EleutherAI/gpt-neox-20b)...")
         tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+        # GPT-NeoX vocab is 50254, but model is built with vocab_size=50288.
+        # The 34 extra slots are padding — we must not let the tokenizer produce
+        # IDs above 50253 or the embedding table will index out of range.
+        # Clamping in the loss + generation handles this safely.
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        print(f"[TOK] vocab={tokenizer.vocab_size} | model vocab=50288 | delta={50288-tokenizer.vocab_size} padding slots")
         if tokenizer.eos_token_id is None:
             tokenizer.eos_token_id = 0
             
@@ -1189,7 +1203,7 @@ def train():
         seq_len      = 512
         WARMUP_STEPS = 300
 
-    SAVE_EVERY    = 200   # was 500 — smaller interval catches save bugs sooner
+    SAVE_EVERY    = 1000  # Every 1000 steps — fewer GPU sync interruptions = smoother loss curve
     DATA_TIMEOUT  = 300
     # GRAD_ACCUM=1 — GPU has no headroom. Model (6.9GB) + Adam state (3.5GB) +
     # one forward pass activations (3.5GB) = ~14GB, already fragmented to fit in 12GB.

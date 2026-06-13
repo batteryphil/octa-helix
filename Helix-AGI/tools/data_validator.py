@@ -1,18 +1,29 @@
-"""Data validation tool — validates JSON data structure without external deps."""
 import json
+import jsonlines
+import os
+import pathlib
+import re
 
-def validate_json_structure(data_str: str, required_keys: list = None) -> str:
-    """Validate that a string is valid JSON and optionally has required keys."""
-    try:
-        obj = json.loads(data_str) if isinstance(data_str, str) else data_str
-    except (json.JSONDecodeError, TypeError) as e:
-        return f"invalid JSON: {e}"
-    if required_keys:
-        missing = [k for k in required_keys if k not in obj]
-        if missing:
-            return f"missing required keys: {missing}"
-    return f"valid ({type(obj).__name__} with {len(obj) if hasattr(obj,'__len__') else 'N/A'} items)"
+def validate_experience_tuples(file_path):
+    with jsonlines.open(file_path) as f:
+        for line in f:
+            data = json.loads(line)
+            assert 'experience' in data, f"Missing 'experience' key in line: {line}"
+            assert isinstance(data['experience'], str), f"Expected 'experience' to be a string, got {type(data['experience'])} in line: {line}"
+            assert len(data['experience']) > 0, f"Experience cannot be empty string in line: {line}"
 
-if __name__ == '__main__':
-    data = '{"name": "John", "age": 30, "city": "New York"}'
-    print(validate_json_structure(data, ['name', 'age']))
+def validate_curiosity_knowledge(file_path):
+    with open(file_path) as f:
+        data = json.load(f)
+        assert isinstance(data, list), f"Expected list, got {type(data)} in file: {file_path}"
+        for item in data:
+            assert isinstance(item, dict), f"Expected dict, got {type(item)} in file: {file_path}"
+            assert 'knowledge' in item, f"Missing 'knowledge' key in item: {item}"
+            assert isinstance(item['knowledge'], str), f"Expected 'knowledge' to be a string, got {type(item['knowledge'])} in item: {item}"
+            assert 'curiosity' in item, f"Missing 'curiosity' key in item: {item}"
+            assert isinstance(item['curiosity'], bool), f"Expected 'curiosity' to be a bool, got {type(item['curiosity'])} in item: {item}"
+
+def validate_belief_snapshot(file_path):
+    with open(file_path) as f:
+        data = f.read()
+        assert re.match
