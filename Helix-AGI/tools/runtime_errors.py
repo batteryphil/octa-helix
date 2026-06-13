@@ -4,17 +4,17 @@ from pathlib import Path
 from typing import List
 
 def extract_last_20_error_logs(log_file: Path) -> List[str]:
-    with open(log_file, 'r') as file:
-        lines = file.readlines()
+    with open(log_file, 'r') as f:
+        lines = f.readlines()
     error_lines = [line for line in lines if 'ERROR' in line]
     last_20_errors = error_lines[-20:]
     return last_20_errors
 
 def main():
     log_file = Path('/path/to/helix.log')
-    error_logs = extract_last_20_error_logs(log_file)
-    for error in error_logs:
-        print(error, end='')
+    last_20_error_logs = extract_last_20_error_logs(log_file)
+    for log in last_20_error_logs:
+        print(log)
 
 if __name__ == '__main__':
     main()
