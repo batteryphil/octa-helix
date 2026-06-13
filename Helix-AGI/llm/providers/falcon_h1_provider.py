@@ -109,27 +109,22 @@ def _load_engine():
         token=HF_TOKEN or None,
     )
 
-    # 8-bit INT8: 7B × 1 byte ≈ 7GB — supports native CPU offload unlike 4-bit NF4.
-    # CPU-offloaded layers run in fp32 on CPU RAM (117GB free), GPU gets Mamba layers.
-    bnb_config = BitsAndBytesConfig(
-        load_in_8bit=True,
-        llm_int8_enable_fp32_cpu_offload=True,   # required for CPU layer offload
-    )
-
-    # Cap GPU at 5GB — attention layers (O(n²) memory) offload to CPU RAM.
-    # Mamba SSM layers stay on GPU. 117GB CPU RAM handles the overflow trivially.
+    # Load in bf16 — Falcon H1's custom architecture is incompatible with BNB CPU offload.
+    # 7B × 2 bytes = 14GB total. Split: ~5GB on GPU (Mamba layers), ~9GB on CPU RAM.
+    # 117GB RAM available — no issue. Accelerate handles the split cleanly.
     ram_budget_gb = min(int(free_ram_gb * 0.7), 80)
     max_memory = {
         0:     "5GiB",
         "cpu": f"{ram_budget_gb}GiB",
     }
+    logger.info(f"Device split: GPU=5GiB, CPU={ram_budget_gb}GiB (bf16, no quantization)")
 
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
         device_map="auto",
         max_memory=max_memory,
-        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
         token=HF_TOKEN or None,
     )
