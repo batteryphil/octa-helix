@@ -75,6 +75,14 @@ def create_session(
         tool_executor: Optional ToolExecutor for function call handling (Gemini only).
         preconscious: Optional Preconscious for belief enrichment on tool returns.
     """
+    if config.provider_type == "jamba":
+        from llm.providers.jamba_tool_provider import JambaToolSession
+        return JambaToolSession(
+            system_instruction=system_instruction,
+            tool_declarations=tool_declarations,
+            tool_executor=tool_executor,
+        )
+
     if config.provider_type == "hermes_tool":
         from llm.providers.hermes_tool_provider import HermesToolSession
         return HermesToolSession(
@@ -147,7 +155,7 @@ def create_session(
     else:
         raise ValueError(
             f"Unknown provider type: {config.provider_type}. "
-            f"Supported: falcon_mamba, titan, gemini, ollama, llama_cpp"
+            f"Supported: jamba, hermes_tool, falcon_mamba, titan, gemini, ollama, llama_cpp"
         )
 
 
@@ -160,15 +168,38 @@ def detect_available_provider() -> Optional[ProviderConfig]:
     4.5GB VRAM, instruction-tuned, coherent output.
     """
     import os
+    import glob
 
-    # 0. Hermes-3-Llama-3.1-8B — highest priority (best agentic tool calibration)
     _here    = os.path.dirname(os.path.abspath(__file__))
     _project = os.path.normpath(os.path.join(_here, "..", "..", ".."))
+
+    # 0. AI21-Jamba-1.5-Mini — highest priority (hybrid Mamba, native tool calling,
+    #    256K context, 12B active / 52B total MoE, GPU+CPU RAM split via device_map)
+    jamba_cache = os.path.join(_project, "hf_cache",
+                               "models--ai21labs--AI21-Jamba-1.5-Mini")
+    if os.path.isdir(jamba_cache):
+        jamba_weights = glob.glob(
+            os.path.join(jamba_cache, "**", "*.safetensors"), recursive=True
+        )
+        if jamba_weights:
+            logger.info(
+                "Auto-detected AI21-Jamba-1.5-Mini — hybrid Mamba/Transformer MoE, "
+                "native tool calling, 256K context, ~4-6GB GPU + ~22GB CPU RAM"
+            )
+            return ProviderConfig(
+                provider_type="jamba",
+                model="ai21labs/AI21-Jamba-1.5-Mini",
+                context_window=262144,   # 256K
+                temperature=0.7,
+                max_output_tokens=512,
+            )
+        else:
+            logger.info("Jamba cache dir exists but weights not yet downloaded — skipping")
+
+    # 1. Hermes-3-Llama-3.1-8B — fallback (best agentic tool calibration among local models)
     hermes_cache = os.path.join(_project, "hf_cache",
                                 "models--NousResearch--Hermes-3-Llama-3.1-8B")
     if os.path.isdir(hermes_cache):
-        # Verify weights are actually downloaded (not just the cache stub)
-        import glob
         hermes_weights = glob.glob(os.path.join(hermes_cache, "**", "*.safetensors"), recursive=True)
         if hermes_weights:
             logger.info(
