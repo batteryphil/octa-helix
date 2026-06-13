@@ -75,6 +75,12 @@ def create_session(
         tool_executor: Optional ToolExecutor for function call handling (Gemini only).
         preconscious: Optional Preconscious for belief enrichment on tool returns.
     """
+    if config.provider_type == "falcon_h1":
+        from llm.providers.falcon_h1_provider import FalconToolSession
+        return FalconToolSession(
+            system_prompt=system_instruction,
+        )
+
     if config.provider_type == "jamba":
         from llm.providers.jamba_tool_provider import JambaToolSession
         return JambaToolSession(
@@ -155,7 +161,7 @@ def create_session(
     else:
         raise ValueError(
             f"Unknown provider type: {config.provider_type}. "
-            f"Supported: jamba, hermes_tool, falcon_mamba, titan, gemini, ollama, llama_cpp"
+            f"Supported: falcon_h1, jamba, hermes_tool, falcon_mamba, titan, gemini, ollama, llama_cpp"
         )
 
 
@@ -173,8 +179,30 @@ def detect_available_provider() -> Optional[ProviderConfig]:
     _here    = os.path.dirname(os.path.abspath(__file__))
     _project = os.path.normpath(os.path.join(_here, "..", "..", ".."))
 
-    # 0. AI21-Jamba-1.5-Mini — highest priority (hybrid Mamba, native tool calling,
-    #    256K context, 12B active / 52B total MoE, GPU+CPU RAM split via device_map)
+    # 0. Falcon-H1-7B-Instruct — highest priority (hybrid Mamba-Transformer, native
+    #    <tool_call> support, 4-bit NF4 GPU-resident ~4GB VRAM, ~15-30 TPS)
+    falcon_h1_cache = os.path.join(_project, "hf_cache",
+                                   "models--tiiuae--Falcon-H1-7B-Instruct")
+    if os.path.isdir(falcon_h1_cache):
+        falcon_h1_weights = glob.glob(
+            os.path.join(falcon_h1_cache, "**", "*.safetensors"), recursive=True
+        )
+        if falcon_h1_weights:
+            logger.info(
+                "Auto-detected Falcon-H1-7B-Instruct — hybrid Mamba/Transformer, "
+                "native tool calling, 4-bit NF4, GPU-resident ~4GB VRAM"
+            )
+            return ProviderConfig(
+                provider_type="falcon_h1",
+                model="tiiuae/Falcon-H1-7B-Instruct",
+                context_window=8192,
+                temperature=0.7,
+                max_output_tokens=512,
+            )
+        else:
+            logger.info("Falcon-H1 cache dir exists but weights not yet downloaded — skipping")
+
+    # 1. AI21-Jamba-1.5-Mini — second priority (52B MoE, CPU inference, 256K context)
     jamba_cache = os.path.join(_project, "hf_cache",
                                "models--ai21labs--AI21-Jamba-1.5-Mini")
     if os.path.isdir(jamba_cache):
@@ -184,12 +212,12 @@ def detect_available_provider() -> Optional[ProviderConfig]:
         if jamba_weights:
             logger.info(
                 "Auto-detected AI21-Jamba-1.5-Mini — hybrid Mamba/Transformer MoE, "
-                "native tool calling, 256K context, ~4-6GB GPU + ~22GB CPU RAM"
+                "native tool calling, 256K context, CPU inference"
             )
             return ProviderConfig(
                 provider_type="jamba",
                 model="ai21labs/AI21-Jamba-1.5-Mini",
-                context_window=262144,   # 256K
+                context_window=262144,
                 temperature=0.7,
                 max_output_tokens=512,
             )
