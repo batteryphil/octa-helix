@@ -1,24 +1,18 @@
 import json
+import os
+from pathlib import Path
 from typing import List, Tuple
 
-class Belief:
-    def __init__(self, text: str, confidence: float):
-        self.text = text
-        self.confidence = confidence
-
-    def __str__(self) -> str:
-        return f"{self.text} ({self.confidence:.2f})"
-
-def load_beliefs(file_path: str) -> List[Belief]:
-    with open(file_path, "r") as f:
+def load_beliefs(filename: str) -> List[Tuple[str, float]]:
+    with open(filename, 'r') as f:
         beliefs = json.load(f)
-    return [Belief(belief["text"], belief["confidence"]) for belief in beliefs]
+    return [(belief['statement'], belief['confidence']) for belief in beliefs if belief['confidence'] > 0.8]
 
-def find_conflicting_pairs(beliefs: List[Belief], confidence_threshold: float) -> List[Tuple[Belief, Belief]]:
-    conflicting_pairs = []
-    for i, belief1 in enumerate(beliefs):
-        for j in range(i + 1, len(beliefs)):
-            belief2 = beliefs[j]
-            if belief1.confidence > confidence_threshold and belief2.confidence > confidence_threshold:
-                conflicting_pairs.append((belief1, belief2))
-    return conflicting_pairs
+def find_conflicts(beliefs: List[Tuple[str, float]]) -> List[Tuple[Tuple[str, float], Tuple[str, float]]]:
+    conflicts = []
+    for i, (belief1, _) in enumerate(beliefs):
+        for j, (belief2, _) in enumerate(beliefs[i+1:]):
+            if belief1[0] != belief2[0] and belief1[0] != 'None' and belief2[0] != 'None':
+                if 'or' in belief1[0].lower() or 'or' in belief2[0].lower() or 'and' in belief1[0].lower() or 'and' in belief2[0].lower():
+                    conflicts.append((belief1, belief2))
+    return conflicts
