@@ -123,28 +123,28 @@ def _load_engine():
     offload_dir = str(Path(__file__).resolve().parents[3] / "offload_cache")
     os.makedirs(offload_dir, exist_ok=True)
 
-    # INT8 config: llm_int8_enable_fp32_cpu_offload=True allows CPU offload
-    # of non-quantized layers (embeddings, layer norms stay in fp32 on CPU).
+    # INT8 config: llm_int8_enable_fp32_cpu_offload=True is required so that
+    # non-quantizable layers (embeddings, layer norms) stay in fp32 on CPU.
+    # device_map="auto" fails on Jamba's hybrid Mamba-SSM architecture because
+    # accelerate's check_device_map can't inspect INT8 Mamba layer state dicts.
+    # device_map="cpu" avoids that dispatch validation while still giving us
+    # the full INT8 memory benefit: 52B × 1 byte ≈ 52GB vs 104GB bf16.
     bnb_config = BitsAndBytesConfig(
         load_in_8bit=True,
         llm_int8_enable_fp32_cpu_offload=True,
+        llm_int8_threshold=6.0,
     )
 
-    # device_map="auto" splits layers: GPU (12GB) gets hot layers,
-    # CPU gets remaining. With INT8 weights (~52GB), RAM usage is ~60-70GB
-    # including activations — well within 124GB.
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        device_map="auto",
+        device_map="cpu",          # Jamba SSM layers incompatible with auto dispatch
         quantization_config=bnb_config,
         trust_remote_code=True,
         offload_folder=offload_dir,
     )
     _model.eval()
-
-    # Primary inference device is wherever the first layer landed
-    _device = next(_model.parameters()).device
+    _device = torch.device("cpu")
 
     gc.collect()
     if torch.cuda.is_available():
