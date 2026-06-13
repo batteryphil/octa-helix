@@ -5,11 +5,12 @@ AI21-Jamba-1.5-Mini is a hybrid Mamba-Transformer MoE model:
   - 52B total parameters, 12B active (MoE routing)
   - Native <tool_call> function calling (same format as Hermes-3)
   - 256K context window with O(1) SSM state (no KV cache growth)
-  - Loaded in 4-bit NF4, Mamba blocks skipped in quantization
+  - Loaded in bf16, no quantization (bnb blocks CPU offload)
 
 VRAM split with device_map="auto":
-  GPU  (~4-6 GB):  active Transformer + MoE expert layers
-  CPU  (~22-26 GB): inactive weights in system RAM
+  GPU  (~10 GB):  active Transformer + MoE expert layers
+  CPU  (~100 GB): remaining weight shards in system RAM (124GB total)
+  Disk offload:   safety net only — should not be needed with 110GiB CPU limit
   SSM state: tiny constant (~KB) regardless of context length
 
 Model ID: ai21labs/AI21-Jamba-1.5-Mini
@@ -59,29 +60,26 @@ VRAM_LOCK.set()
 
 
 def _load_engine():
-    """Load Jamba-1.5-Mini: 4-bit NF4, Mamba blocks skipped, GPU+CPU split."""
+    """Load Jamba-1.5-Mini in bf16 with GPU+CPU RAM split via device_map.
+
+    bitsandbytes (any quantization mode) blocks CPU offloading in recent versions.
+    Loading in native bf16 with explicit max_memory limits sidesteps this entirely.
+
+    Memory split (124GB RAM machine):
+      GPU  (10 GB):  hot transformer/attention layers
+      CPU  (110 GB): remaining weight shards — enough headroom for all 52B params
+      Disk:          offload_folder set as safety net, should never be triggered
+    """
     global _model, _tokenizer, _device
     if _model is not None:
         return
 
-    from transformers import (
-        AutoTokenizer,
-        AutoModelForCausalLM,
-        BitsAndBytesConfig,
-    )
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    import os
 
-    logger.info(f"Loading {MODEL_ID} — 4-bit NF4, Mamba blocks unquantized...")
-    logger.info("This is a 52B MoE model — first load takes 3-10 minutes.")
+    logger.info(f"Loading {MODEL_ID} — bf16, GPU+CPU split (no quantization)...")
+    logger.info("52B MoE model: ~10GB GPU + ~110GB CPU RAM. First load ~8-12 min.")
     t0 = time.time()
-
-    # CRITICAL: skip Mamba blocks in quantization — they degrade badly at 4-bit
-    bnb_cfg = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        llm_int8_skip_modules=["mamba"],  # ← Jamba-specific requirement
-    )
 
     _tokenizer = AutoTokenizer.from_pretrained(
         MODEL_ID,
@@ -91,23 +89,30 @@ def _load_engine():
     if _tokenizer.pad_token is None:
         _tokenizer.pad_token = _tokenizer.eos_token
 
-    # Try flash_attention_2 first, fall back to eager
     _attn_impl = "eager"
     try:
         import flash_attn  # noqa: F401
         _attn_impl = "flash_attention_2"
-        logger.info("Flash Attention 2 available — using for Transformer layers")
+        logger.info("Flash Attention 2 available")
     except ImportError:
-        logger.info("Flash Attention 2 not installed — using eager (slower but fine)")
+        pass
+
+    # Give CPU 110GiB — the 52B model in bf16 is ~104GB, so this keeps everything
+    # in RAM with no disk spill. offload_folder is a safety net for any MoE
+    # routing tensors that device_map insists on offloading (ValueError without it).
+    max_mem = {0: "10GiB", "cpu": "110GiB"}
+    offload_dir = str(Path(__file__).resolve().parents[3] / "offload_cache")
+    os.makedirs(offload_dir, exist_ok=True)
 
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        quantization_config=bnb_cfg,
-        device_map="auto",          # GPU for active layers, CPU RAM for rest
-        torch_dtype=torch.bfloat16, # Required by Jamba
+        device_map="auto",
+        max_memory=max_mem,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
         attn_implementation=_attn_impl,
+        offload_folder=offload_dir,
     )
     _model.eval()
 
@@ -120,7 +125,7 @@ def _load_engine():
     gpu_gb  = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     logger.info(
         f"Jamba-1.5-Mini ready ✅  GPU: {gpu_gb:.1f} GB  "
-        f"(rest in CPU RAM)  loaded in {elapsed:.0f}s"
+        f"(CPU RAM: remainder)  loaded in {elapsed:.0f}s"
     )
 
 
