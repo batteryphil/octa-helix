@@ -83,7 +83,7 @@ _model     = None
 _tokenizer = None
 _device    = None
 
-_MAX_INPUT_TOKENS = 2048  # RTX 3060: 5.1GB model + 6.8GB free = tight, keep prefill small
+_MAX_INPUT_TOKENS = 4096  # CPU RAM is now the overflow — can handle larger contexts
 
 # Reduce CUDA memory fragmentation — critical for small VRAM
 import os as _os
@@ -97,8 +97,10 @@ def _load_engine():
         return
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    import psutil
 
-    logger.info(f"Loading {MODEL_ID} — 4-bit NF4, GPU...")
+    free_ram_gb = psutil.virtual_memory().available / 1e9
+    logger.info(f"Loading {MODEL_ID} — 4-bit NF4, GPU+CPU hybrid (free RAM: {free_ram_gb:.0f}GB)...")
 
     _tokenizer = AutoTokenizer.from_pretrained(
         MODEL_ID,
@@ -107,18 +109,28 @@ def _load_engine():
         token=HF_TOKEN or None,
     )
 
-    # 4-bit NF4: 7B × 0.5 bytes ≈ 3.5GB VRAM — leaves 8.5GB for activations/KV
+    # 4-bit NF4: 7B × 0.5 bytes ≈ 3.5GB VRAM
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,   # extra ~0.4 bit/param saving
+        bnb_4bit_use_double_quant=True,
     )
+
+    # Cap GPU at 5GB so attention layer activations (O(n²)) don't OOM during prefill.
+    # Remaining Falcon H1 layers spill to CPU RAM (100GB+ available).
+    # Mamba SSM layers are small and stay on GPU; large attention layers land on CPU.
+    ram_budget_gb = min(int(free_ram_gb * 0.7), 80)
+    max_memory = {
+        0:     "5GiB",                     # GPU: weights only, leave room for activations
+        "cpu": f"{ram_budget_gb}GiB",      # CPU RAM: overflow layers + attention activations
+    }
 
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        device_map="auto",          # GPU first, spill to CPU only if needed
+        device_map="auto",
+        max_memory=max_memory,
         quantization_config=bnb_config,
         trust_remote_code=True,
         token=HF_TOKEN or None,
@@ -135,10 +147,11 @@ def _load_engine():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    gpu_gb = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+    gpu_gb  = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+    total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
     logger.info(
-        f"Falcon-H1-7B ready ✅  4-bit NF4  GPU: {gpu_gb:.1f}GB used / "
-        f"{torch.cuda.get_device_properties(0).total_memory / 1e9:.0f}GB  "
+        f"Falcon-H1-7B ready ✅  4-bit NF4  "
+        f"GPU: {gpu_gb:.1f}/{total_gb:.0f}GB  CPU RAM budget: {ram_budget_gb}GB  "
         f"device={_device}"
     )
 
