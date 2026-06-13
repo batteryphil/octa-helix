@@ -566,14 +566,14 @@ function updateGauges(data) {
   let level, labelText, agoText;
   if (ts === 0) {
     level = 'unknown'; labelText = 'UNKNOWN'; agoText = 'no heartbeat file';
-  } else if (ageSec < 180) {          // < 3 min  → alive
+  } else if (ageSec < 1500) {        // < 25 min → alive (10 pulses × ~2min each)
     level = 'alive';   labelText = 'ALIVE';
     const m = Math.floor(ageSec / 60), s = ageSec % 60;
     agoText = m > 0 ? `${m}m ${s}s ago` : `${s}s ago`;
-  } else if (ageSec < 600) {          // 3–10 min → stale / busy
+  } else if (ageSec < 2700) {        // 25–45 min → stale / busy
     level = 'stale';   labelText = 'SLOW';
     agoText = `${Math.floor(ageSec/60)}m ago — may be busy`;
-  } else {                            // > 10 min → crashed
+  } else {                            // > 45 min → crashed
     level = 'crashed'; labelText = 'CRASHED';
     const mins = Math.floor(ageSec / 60);
     agoText = `last seen ${mins}m ago`;
