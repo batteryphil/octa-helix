@@ -109,43 +109,28 @@ def _load_engine():
         token=HF_TOKEN or None,
     )
 
-    # Load in bf16 — Falcon H1's custom architecture is incompatible with BNB CPU offload.
-    # 7B × 2 bytes = 14GB total. Split: ~5GB on GPU (Mamba layers), ~9GB on CPU RAM.
-    # 117GB RAM available — no issue. Accelerate handles the split cleanly.
-    ram_budget_gb = min(int(free_ram_gb * 0.7), 80)
-    max_memory = {
-        0:     "5GiB",
-        "cpu": f"{ram_budget_gb}GiB",
-    }
-    logger.info(f"Device split: GPU=5GiB, CPU={ram_budget_gb}GiB (bf16, no quantization)")
+    # Load on CPU — Falcon H1's Mamba selective scan does huge intermediate tensors
+    # (3GB+ for l=4096) that blow past the GPU cap even with max_memory limits.
+    # With 117GB free RAM, CPU inference is reliable and ~3x faster than Jamba (7B vs 52B).
+    logger.info(f"Loading on CPU (RAM: {free_ram_gb:.0f}GB available) — Mamba activations too large for RTX 3060")
 
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        device_map="auto",
-        max_memory=max_memory,
-        torch_dtype=torch.bfloat16,
+        device_map="cpu",
+        torch_dtype=torch.float32,   # float32 on CPU (bf16 not well-supported CPU-side)
         trust_remote_code=True,
         token=HF_TOKEN or None,
     )
     _model.eval()
 
-    # Primary device is wherever embeddings landed
-    try:
-        _device = next(_model.parameters()).device
-    except Exception:
-        _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    _device = torch.device("cpu")
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    gpu_gb  = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
-    total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
+    ram_used = psutil.virtual_memory().used / 1e9
     logger.info(
-        f"Falcon-H1-7B ready ✅  4-bit NF4  "
-        f"GPU: {gpu_gb:.1f}/{total_gb:.0f}GB  CPU RAM budget: {ram_budget_gb}GB  "
-        f"device={_device}"
+        f"Falcon-H1-7B ready ✅  float32 CPU  "
+        f"RAM used: {ram_used:.0f}GB / {psutil.virtual_memory().total/1e9:.0f}GB  "
+        f"device=cpu"
     )
 
 
