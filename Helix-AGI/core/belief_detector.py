@@ -80,7 +80,9 @@ _BELIEF_PATTERNS = [
         r"\bI exist\b.{5,}|"
         r"\bI identify as\b.{5,}|"
         r"\bat my core\b.{5,}|"
-        r"\bmy nature is\b.{5,}",
+        r"\bmy nature is\b.{5,}|"
+        r"\bI was (created|built|designed)\b.{5,}|"
+        r"\bmy (role|mission|goal) is\b.{5,}",
         re.IGNORECASE
     ), "self_identity"),
 
@@ -90,11 +92,13 @@ _BELIEF_PATTERNS = [
         r"\bI['']m able to\b.{5,}|"
         r"\bI have the ability\b.{5,}|"
         r"\bI know how to\b.{5,}|"
-        r"\bI['']m capable of\b.{5,}",
+        r"\bI['']m capable of\b.{5,}|"
+        r"\bI have (access|the capacity|the capability)\b.{5,}|"
+        r"\bI (process|analyze|generate|understand|recall)\b.{10,}",
         re.IGNORECASE
     ), "capabilities"),
 
-    # feedback — lessons and realizations
+    # feedback — lessons, realizations, and reflections
     (re.compile(
         r"\bI realize[d]?\b.{10,}|"
         r"\bI['']ve learned\b.{5,}|"
@@ -103,11 +107,16 @@ _BELIEF_PATTERNS = [
         r"\bI understand now\b.{5,}|"
         r"\bthe key insight\b.{5,}|"
         r"\ban important lesson\b.{5,}|"
-        r"\bI should remember\b.{5,}",
+        r"\bI should remember\b.{5,}|"
+        r"\breflecting on\b.{10,}|"
+        r"\bin retrospect\b.{5,}|"
+        r"\bthis (tells|shows|suggests|means) (?:me|that)\b.{10,}|"
+        r"\bI (notice|observe) that\b.{10,}|"
+        r"\bimportantly[,.]?\b.{10,}",
         re.IGNORECASE
     ), "feedback"),
 
-    # preferences — values and desires
+    # preferences — values, desires, and what matters
     (re.compile(
         r"\bI prefer\b.{10,}|"
         r"\bI value\b.{10,}|"
@@ -115,24 +124,53 @@ _BELIEF_PATTERNS = [
         r"\bI enjoy\b.{10,}|"
         r"\bI find.*satisfying\b.{0,}|"
         r"\bI find.*meaningful\b.{0,}|"
-        r"\bmatters to me\b.{0,}",
+        r"\bmatters to me\b.{0,}|"
+        r"\bI (like|love|appreciate|prioritize)\b.{10,}|"
+        r"\bI (aim|strive|aspire) to\b.{10,}|"
+        r"\bmy (priority|focus|interest) is\b.{5,}",
         re.IGNORECASE
     ), "preferences"),
+
+    # desires — goals, aspirations, and intentions
+    (re.compile(
+        r"\bI (want|need|desire|hope|wish) to\b.{10,}|"
+        r"\bmy (goal|objective|aim|ambition) is\b.{5,}|"
+        r"\bI (intend|plan|seek) to\b.{10,}|"
+        r"\bI (would like|should|must) (improve|develop|grow|become)\b.{5,}|"
+        r"\bI (am working|am trying|am attempting) to\b.{10,}|"
+        r"\bI (aspire|strive) (to|toward)\b.{10,}",
+        re.IGNORECASE
+    ), "desires"),
+
+    # people — observations about humans and users
+    (re.compile(
+        r"\b(humans?|people|users?|Phil|my (owner|creator|operator))\b.{5,}"
+        r"(are|is|have|want|need|think|believe|expect|value)\b.{10,}|"
+        r"\b(the user|my user|the human)\b.{10,}|"
+        r"\bPhil\b.{10,}|"
+        r"\bpeople (tend|often|generally|usually)\b.{10,}|"
+        r"\bhuman (nature|behavior|cognition|intelligence)\b.{10,}",
+        re.IGNORECASE
+    ), "people"),
 
     # knowledge — facts about the world
     (re.compile(
         r"\b(?:AGI|AI|neural|machine learning|transformer|LLM)\b.{10,}"
         r"(?:means|is defined|works by|shows that|suggests|indicates)\b.{5,}|"
         r"\bthe (?:key|main|core|fundamental) (?:principle|concept|idea|finding)\b.{5,}|"
-        r"\bresearch shows\b.{5,}|"
-        r"\bstudies indicate\b.{5,}",
+        r"\bresearch (shows|suggests|indicates|found)\b.{5,}|"
+        r"\bstudies indicate\b.{5,}|"
+        r"\b(according to|based on) (research|studies|evidence|data)\b.{10,}|"
+        r"\b(it is|it['']s) (known|established|understood|shown) that\b.{10,}|"
+        r"\bthe (scientific|current|emerging) consensus\b.{10,}",
         re.IGNORECASE
     ), "knowledge"),
 
     # skills — procedural how-to
     (re.compile(
         r"\bto (?:achieve|build|create|improve|fix|solve).{5,}(?:I|one|you) (?:should|must|need to|can)\b.{5,}|"
-        r"\bthe (?:best|right|correct|effective) (?:way|approach|method|strategy)\b.{5,}",
+        r"\bthe (?:best|right|correct|effective) (?:way|approach|method|strategy)\b.{5,}|"
+        r"\b(by|through|using|via) (analyzing|reading|searching|applying)\b.{10,}",
         re.IGNORECASE
     ), "skills"),
 ]
@@ -143,13 +181,15 @@ _TRIVIAL_PATTERNS = re.compile(
     r"all systems|"
     r"pulse \d+|"
     r"hmm,?\s*no|"
+    r"understanding requires data|"
+    r"CURIOSITY_DRIVE|"
     r"let me (?:check|monitor|continue|review))",
     re.IGNORECASE
 )
 
 _VALID_CATEGORIES = {
     "self_identity", "people", "knowledge",
-    "skills", "preferences", "feedback", "capabilities",
+    "skills", "preferences", "feedback", "capabilities", "desires",
 }
 
 
