@@ -9,8 +9,8 @@ def validate_json(json_string):
         return 'invalid', str(e)
 
 if __name__ == '__main__':
-    test_json = '{"name": "Helix", "version": 1.0}'
-    print(validate_json(test_json))  # Output: valid
+    test_json = '{"name": "John", "age": 30, "city": "New York"}'
+    print(validate_json(test_json))
 
-    test_json = '{"name": "Helix", "version": 1.0'
-    print(validate_json(test_json))  # Output: invalid SyntaxError: Expecting ',' delimiter
+    test_invalid_json = '{"name": "John", "age": 30, "city": "New York"'
+    print(validate_json(test_invalid_json))
