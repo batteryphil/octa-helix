@@ -48,6 +48,30 @@ SYSTEM_PROMPT = (
 
 MAX_TOOL_LOOPS = 8  # Jamba 256K context — room for complex multi-step tool chains
 
+# ── TPS tracking (rolling average over last 10 generations) ───────────────────
+import collections as _collections
+_tps_samples: _collections.deque = _collections.deque(maxlen=10)
+
+
+def _record_tps(n_tokens: int, elapsed: float) -> float:
+    """Record a generation's TPS and return the rolling average."""
+    if elapsed > 0 and n_tokens > 0:
+        _tps_samples.append(n_tokens / elapsed)
+    avg = sum(_tps_samples) / len(_tps_samples) if _tps_samples else 0.0
+    try:
+        import json as _json
+        _stats_path = Path(__file__).resolve().parents[3] / "data" / "inference_stats.json"
+        _stats_path.parent.mkdir(parents=True, exist_ok=True)
+        _stats_path.write_text(_json.dumps({
+            "tps": round(avg, 2),
+            "tps_last": round(_tps_samples[-1] if _tps_samples else 0, 2),
+            "n_samples": len(_tps_samples),
+            "ts": time.time(),
+        }))
+    except Exception:
+        pass
+    return avg
+
 # ── Singleton engine ──────────────────────────────────────────────────────────
 _model     = None
 _tokenizer = None
@@ -466,6 +490,7 @@ class JambaToolSession:
                 think_ids = self._tokenizer(
                     think_prompt, return_tensors="pt"
                 ).input_ids.to(infer_device)
+                _t0_think = time.time()
                 with torch.no_grad():
                     think_out = self._model.generate(
                         think_ids,
@@ -473,6 +498,8 @@ class JambaToolSession:
                         do_sample=False,
                         pad_token_id=self._tokenizer.eos_token_id,
                     )
+                _think_ntok = think_out.shape[1] - think_ids.shape[1]
+                _record_tps(_think_ntok, time.time() - _t0_think)
                 think_text = self._tokenizer.decode(
                     think_out[0][think_ids.shape[1]:],
                     skip_special_tokens=True,
@@ -547,6 +574,7 @@ class JambaToolSession:
                     prompt, return_tensors="pt"
                 ).input_ids.to(infer_device)
 
+                _t0_act = time.time()
                 with torch.no_grad():
                     out = self._model.generate(
                         input_ids,
@@ -555,6 +583,8 @@ class JambaToolSession:
                         temperature=(0.4 if is_mandate_pulse else self.temperature),
                         pad_token_id=self._tokenizer.eos_token_id,
                     )
+                _act_ntok = out.shape[1] - input_ids.shape[1]
+                _record_tps(_act_ntok, time.time() - _t0_act)
 
                 raw = self._tokenizer.decode(
                     out[0][input_ids.shape[1]:], skip_special_tokens=False

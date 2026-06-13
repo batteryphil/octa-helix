@@ -172,6 +172,7 @@
   }
   .gauge-fill.omega { background: linear-gradient(90deg, var(--red), var(--gold), var(--green)); }
   .gauge-fill.gamma { background: linear-gradient(90deg, var(--green), var(--accent)); }
+  .gauge-fill.tps   { background: linear-gradient(90deg, #06b6d4, #a78bfa); }
 
   .cat-list { list-style: none; }
   .cat-item {
@@ -327,6 +328,11 @@
       <div class="gauge">
         <div class="gauge-header"><span class="gauge-label">γ Inertia</span><span class="gauge-value" id="g-gamma">—</span></div>
         <div class="gauge-bar"><div class="gauge-fill gamma" id="gf-gamma" style="width:50%"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-header"><span class="gauge-label">⚡ TPS</span><span class="gauge-value" id="g-tps" style="color:#22d3ee">—</span></div>
+        <div class="gauge-bar"><div class="gauge-fill tps" id="gf-tps" style="width:0%"></div></div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px">last: <span id="g-tps-last" style="color:#7dd3fc">—</span> tok/s</div>
       </div>
     </div>
     <div class="gauge-section">
@@ -549,6 +555,12 @@ function updateGauges(data) {
   document.getElementById('gf-omega').style.width = (data.omega * 100) + '%';
   document.getElementById('g-gamma').textContent = data.gamma.toFixed(3);
   document.getElementById('gf-gamma').style.width = ((data.gamma - 0.5) / 0.45 * 100) + '%';
+  // TPS gauge — max scale 20 tok/s for the bar, display actual value
+  const tps = data.tps || 0;
+  const tpsLast = data.tps_last || 0;
+  document.getElementById('g-tps').textContent = tps > 0 ? tps.toFixed(2) + ' tok/s' : '—';
+  document.getElementById('gf-tps').style.width = Math.min(100, (tps / 20) * 100) + '%';
+  document.getElementById('g-tps-last').textContent = tpsLast > 0 ? tpsLast.toFixed(2) : '—';
   document.getElementById('pulse-num').textContent = data.pulse;
 
   const badge = document.getElementById('state-badge');

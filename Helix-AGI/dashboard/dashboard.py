@@ -328,6 +328,19 @@ def read_status() -> Dict[str, Any]:
         except Exception:
             pass
 
+    # Read TPS from inference_stats.json written by jamba_tool_provider
+    tps = 0.0
+    tps_last = 0.0
+    STATS_FILE = BASE_DIR / "data" / "inference_stats.json"
+    if STATS_FILE.exists():
+        try:
+            with open(STATS_FILE) as f:
+                stats = json.load(f)
+            tps      = stats.get("tps", 0.0)
+            tps_last = stats.get("tps_last", 0.0)
+        except Exception:
+            pass
+
     return {
         "beliefs": stats,
         "omega": omega,
@@ -336,6 +349,8 @@ def read_status() -> Dict[str, Any]:
         "state": state,
         "ts": ts,
         "pid": pid,
+        "tps": tps,
+        "tps_last": tps_last,
     }
 
 
