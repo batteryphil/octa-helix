@@ -1,16 +1,18 @@
 import psutil
 import json
+import os
 
-def check_system_health():
+def get_system_health():
     cpu_usage = psutil.cpu_percent()
-    vram_usage = psutil.virtual_memory().total - psutil.virtual_memory().available
+    vram_usage = psutil.virtual_memory().used / (1024 * 1024 * 1024)
+    return {
+        'cpu_usage': cpu_usage if cpu_usage < 80 else f"CPU usage exceeded 80%: {cpu_usage}%",
+        'vram_usage': vram_usage if vram_usage < 10 else f"VRAM usage exceeded 10GB: {vram_usage}GB"
+    }
 
-    if cpu_usage > 80:
-        return json.dumps({"status": "warning", "message": f"CPU usage exceeded 80%: {cpu_usage}%"})
-    elif vram_usage > 10*1024*1024*1024:  # 10 GB
-        return json.dumps({"status": "warning", "message": f"VRAM usage exceeded 10GB: {vram_usage / (1024*1024*1024):.2f} GB"})
-    else:
-        return "ok"
+def main():
+    health = get_system_health()
+    print(json.dumps(health))
 
 if __name__ == '__main__':
-    print(check_system_health())
+    main()
