@@ -82,7 +82,7 @@ _BELIEF_PATTERNS = [
         r"\bat my core\b.{5,}|"
         r"\bmy nature is\b.{5,}|"
         r"\bI was (created|built|designed)\b.{5,}|"
-        r"\bmy (role|mission|goal) is\b.{5,}",
+        r"\bmy (role|mission) is\b.{5,}",
         re.IGNORECASE
     ), "self_identity"),
 
@@ -120,13 +120,11 @@ _BELIEF_PATTERNS = [
     (re.compile(
         r"\bI prefer\b.{10,}|"
         r"\bI value\b.{10,}|"
-        r"\bI want\b.{10,}|"
         r"\bI enjoy\b.{10,}|"
         r"\bI find.*satisfying\b.{0,}|"
         r"\bI find.*meaningful\b.{0,}|"
         r"\bmatters to me\b.{0,}|"
         r"\bI (like|love|appreciate|prioritize)\b.{10,}|"
-        r"\bI (aim|strive|aspire) to\b.{10,}|"
         r"\bmy (priority|focus|interest) is\b.{5,}",
         re.IGNORECASE
     ), "preferences"),
