@@ -291,6 +291,49 @@ def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
     for m in re.finditer(r'\[(?:MEMORY_)?RECALL\s+(.+?)\]', text, re.IGNORECASE):
         calls.append({"name": "memory_recall", "arguments": {"query": m.group(1).strip()}})
 
+    # ── Format 4: Python function-call syntax ────────────────────────────────
+    # Model sometimes outputs: search("query"), read_code("path"), func("arg")
+    # Often inside code blocks:  ```\nsearch("q")\n```
+    # This fires ONLY if no other format matched, as a last-resort recovery.
+    # Arg-name mapping: tool → first-param name (avoids needing registry at parse time)
+    if not calls:
+        _ARG_MAP = {
+            'search':        'query',
+            'github_search': 'query',
+            'memory_recall': 'query',
+            'read_url':      'url',
+            'read_code':     'path',
+            'write_code':    'path',
+            'read_file':     'path',
+            'write_file':    'path',
+            'run_tests':     'path',
+            'terminal':      'command',
+            'run_python':    'code',
+            'note':          'content',
+            'note_done':     'note_id',
+            'update_note':   'title',
+            'list_notes':    'query',
+            'clear_notes':   'confirm',
+            'reload_tool':   'path',
+        }
+        # Match: optional_backticks func_name("arg") optional_backticks
+        # Handles single or double quotes, with or without code fences
+        _py_pat = re.compile(
+            r'`{0,3}\n?'
+            r'([a-z][a-z0-9_]*)'
+            r'\s*\(\s*["\']([^"\'\n]{2,})["\']\s*\)'
+            r'\n?`{0,3}',
+            re.IGNORECASE,
+        )
+        seen_py = set()
+        for m in _py_pat.finditer(text):
+            func = m.group(1).lower()
+            arg  = m.group(2).strip()
+            if func in _ARG_MAP and (func, arg) not in seen_py:
+                seen_py.add((func, arg))
+                calls.append({"name": func, "arguments": {_ARG_MAP[func]: arg}})
+                logger.warning(f"[parser] Format-4 recovered Python call: {func}({arg!r})")
+
     return calls if calls else None
 
 
@@ -522,7 +565,12 @@ class HermesToolSession:
                     messages.append({"role": "assistant", "content": think_text})
                     messages.append({
                         "role": "user",
-                        "content": "Now execute your plan by calling the appropriate tool.",
+                        "content": (
+                            "Now execute your plan. Use ONLY this exact format:\n"
+                            "<tool_call>\n"
+                            '{"name": "tool_name", "arguments": {"param": "value"}}\n'
+                            "</tool_call>"
+                        ),
                     })
             except Exception as _te:
                 logger.warning(f"HERMES THINK phase error: {_te}")
