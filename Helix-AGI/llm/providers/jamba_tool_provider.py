@@ -431,10 +431,10 @@ class JambaToolSession:
             re.search(r'\[ACTION REQUIRED|\[INTROSPECTION PULSE', message)
         )
 
-        # Jamba: O(1) SSM state means longer outputs cost no extra memory.
-        # Raised from Hermes-era limits (think=100, act=200) to give real reasoning room.
-        think_budget = 400   # was 100 — enough for multi-step reasoning chain
-        act_budget   = 600   # was 200 — room for tool call + surrounding prose
+        # CPU inference ~3-5 tok/sec: THINK=200 (~40-60s) + ACT=400 (~80-130s) ≈ 2min/pulse.
+        # User-facing stays at 1500 — manually triggered so cadence doesn't matter.
+        think_budget = 200   # enough for a clear reasoning step
+        act_budget   = 400   # fits a full tool call + surrounding prose
         token_budget = 1500 if not is_autonomous_pulse else act_budget
 
         logger.warning(
