@@ -109,21 +109,19 @@ def _load_engine():
         token=HF_TOKEN or None,
     )
 
-    # 4-bit NF4: 7B × 0.5 bytes ≈ 3.5GB VRAM
+    # 8-bit INT8: 7B × 1 byte ≈ 7GB — supports native CPU offload unlike 4-bit NF4.
+    # CPU-offloaded layers run in fp32 on CPU RAM (117GB free), GPU gets Mamba layers.
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
+        load_in_8bit=True,
+        llm_int8_enable_fp32_cpu_offload=True,   # required for CPU layer offload
     )
 
-    # Cap GPU at 5GB so attention layer activations (O(n²)) don't OOM during prefill.
-    # Remaining Falcon H1 layers spill to CPU RAM (100GB+ available).
-    # Mamba SSM layers are small and stay on GPU; large attention layers land on CPU.
+    # Cap GPU at 5GB — attention layers (O(n²) memory) offload to CPU RAM.
+    # Mamba SSM layers stay on GPU. 117GB CPU RAM handles the overflow trivially.
     ram_budget_gb = min(int(free_ram_gb * 0.7), 80)
     max_memory = {
-        0:     "5GiB",                     # GPU: weights only, leave room for activations
-        "cpu": f"{ram_budget_gb}GiB",      # CPU RAM: overflow layers + attention activations
+        0:     "5GiB",
+        "cpu": f"{ram_budget_gb}GiB",
     }
 
     _model = AutoModelForCausalLM.from_pretrained(
