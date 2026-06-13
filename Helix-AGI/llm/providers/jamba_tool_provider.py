@@ -97,10 +97,11 @@ def _load_engine():
     except ImportError:
         pass
 
-    # Give CPU 110GiB — the 52B model in bf16 is ~104GB, so this keeps everything
-    # in RAM with no disk spill. offload_folder is a safety net for any MoE
-    # routing tensors that device_map insists on offloading (ValueError without it).
-    max_mem = {0: "10GiB", "cpu": "110GiB"}
+    # GPU: 8GiB for weights — leaves ~3.5GB headroom for activation tensors during
+    # inference (a 52B MoE forward pass needs 2-4GB for activations).
+    # Keeping GPU at 10GiB causes OOM because weights eat 9.6GB leaving <2GB free.
+    # CPU gets 112GiB to absorb the extra layers pushed off the GPU.
+    max_mem = {0: "8GiB", "cpu": "112GiB"}
     offload_dir = str(Path(__file__).resolve().parents[3] / "offload_cache")
     os.makedirs(offload_dir, exist_ok=True)
 
@@ -459,9 +460,15 @@ class JambaToolSession:
                 think_prompt = self._tokenizer.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
                 )
+                # Guard: if device landed on 'meta' (placeholder), resolve to cuda:0
+                infer_device = self._device
+                if str(infer_device) == "meta" or infer_device is None:
+                    infer_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                    self._device = infer_device
+                torch.cuda.empty_cache()  # clear activation fragments before THINK
                 think_ids = self._tokenizer(
                     think_prompt, return_tensors="pt"
-                ).input_ids.to(self._device)
+                ).input_ids.to(infer_device)
                 with torch.no_grad():
                     think_out = self._model.generate(
                         think_ids,
@@ -534,9 +541,14 @@ class JambaToolSession:
                     prompt = prompt + _prefill_str
                     logger.warning(f"[jamba] Mandate prefill: seed='{seed_tool}'")
 
+                infer_device = self._device
+                if str(infer_device) == "meta" or infer_device is None:
+                    infer_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                    self._device = infer_device
+                torch.cuda.empty_cache()  # clear activation fragments before ACT
                 input_ids = self._tokenizer(
                     prompt, return_tensors="pt"
-                ).input_ids.to(self._device)
+                ).input_ids.to(infer_device)
 
                 with torch.no_grad():
                     out = self._model.generate(
