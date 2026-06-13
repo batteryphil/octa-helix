@@ -925,8 +925,9 @@ class PulseLoop:
                 self._pending_context_reset = False
                 _oom_reset_fired = True
 
-        # Write state heartbeat every 10 pulses for dashboard state tracking
-        if self._pulse_count % 10 == 0:
+        # Write state heartbeat — every pulse for first 10 (post-restart blind spot),
+        # then every 5 pulses to keep dashboard current without excessive disk I/O.
+        if self._pulse_count <= 10 or self._pulse_count % 5 == 0:
             self._write_status_heartbeat()
 
         # 10. Check for pending context reset (from reset_context tool)
