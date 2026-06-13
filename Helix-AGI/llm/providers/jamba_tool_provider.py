@@ -46,7 +46,7 @@ SYSTEM_PROMPT = (
     "- You are autonomous: you decide what to do next based on your goals and memory.\n"
 )
 
-MAX_TOOL_LOOPS = 5
+MAX_TOOL_LOOPS = 8  # Jamba 256K context — room for complex multi-step tool chains
 
 # ── Singleton engine ──────────────────────────────────────────────────────────
 _model     = None
@@ -305,8 +305,8 @@ class JambaToolSession:
     """
 
     is_non_fc_model = True
-    MAX_HISTORY_TURNS = 6
-    MAX_NEW_TOKENS    = 512
+    MAX_HISTORY_TURNS = 20  # Jamba 256K ctx \u2014 can hold 20 full turns comfortably
+    MAX_NEW_TOKENS    = 1500  # Jamba 256K ctx, O(1) SSM state — no KV cache penalty
 
     def __init__(
         self,
@@ -431,9 +431,11 @@ class JambaToolSession:
             re.search(r'\[ACTION REQUIRED|\[INTROSPECTION PULSE', message)
         )
 
-        think_budget = 100
-        act_budget   = 200
-        token_budget = 512 if not is_autonomous_pulse else act_budget
+        # Jamba: O(1) SSM state means longer outputs cost no extra memory.
+        # Raised from Hermes-era limits (think=100, act=200) to give real reasoning room.
+        think_budget = 400   # was 100 — enough for multi-step reasoning chain
+        act_budget   = 600   # was 200 — room for tool call + surrounding prose
+        token_budget = 1500 if not is_autonomous_pulse else act_budget
 
         logger.warning(
             f"JAMBA send_message: autonomous={is_autonomous_pulse} "
