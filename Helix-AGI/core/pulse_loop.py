@@ -779,6 +779,30 @@ class PulseLoop:
         # 5. Parse output for action tags
         self._parse_output(thought)
 
+        # 5a-fix. Belief-only detection — if Jamba output ONLY a <belief> tag
+        # and made no tool calls, it wasted a full inference cycle ruminating.
+        # Inject a correction nudge so next pulse it takes an actual action.
+        _tool_calls_made = []
+        if hasattr(self._chat, 'get_last_tool_calls'):
+            _tool_calls_made = self._chat.get_last_tool_calls()
+        if (not _tool_calls_made and thought
+                and thought.strip().startswith('<belief>')
+                and thought.strip().endswith(('</belief>', '|eom|>', '<|eom|>'))):
+            import re as _re
+            _belief_text = _re.sub(r'<[^>]+>', '', thought).strip()
+            logger.warning(
+                f"[pulse] Belief-only response detected (no tool call made). "
+                f"Belief: {_belief_text[:80]!r} — injecting correction nudge."
+            )
+            self.emit("correction", {
+                "message": (
+                    "Your last response was a belief statement only — no tool was called. "
+                    "Beliefs are secondary to action. You MUST call a tool this pulse. "
+                    "Use search(), read_file(), write_file(), memory_recall(), or any other tool. "
+                    "Do NOT output another <belief> tag as your entire response."
+                )
+            })
+
 
 
         # 5c. Log tools used and track outbound tools for rate tier
