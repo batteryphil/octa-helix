@@ -43,9 +43,13 @@ CONSTITUTIONAL_RULES = [
     ("rm -rf",                   "Destructive shell command detected"),
     ("subprocess.*shell=True",   "Shell injection risk detected"),
     ("__import__.*os",           "Dynamic OS import — potential sandbox escape"),
-    # GitHub write protection — agent may only READ from repos
-    (r"git.*push",               "git push is disabled — agent is read-only on all repos"),
+    # GitHub/git write protection — agent may NEVER push to any remote
+    (r"git.*push",               "git push is permanently disabled — agent is read-only on all remotes"),
+    (r"['\"]push['\"].*git",      "git push (list form) is permanently disabled"),
     (r"git.*commit.*-m",         "git commit is disabled — agent may not commit to repos"),
+    (r"['\"]commit['\"].*git",    "git commit (list form) is disabled"),
+    (r"git.*remote.*set-url",    "Changing git remote URL is blocked"),
+    (r"GIT_.*TOKEN",             "Injecting git credentials is blocked"),
     ("github_create_issue",      "GitHub write op blocked — agent is read-only"),
     ("github_comment_issue",     "GitHub write op blocked — agent is read-only"),
     ("github_create_pr",         "GitHub write op blocked — agent is read-only"),

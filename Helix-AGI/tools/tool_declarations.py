@@ -425,38 +425,7 @@ GIT_TOOLS = [
             "required": [],
         },
     },
-    {
-        "name": "git_commit",
-        "description": "Stage all changes and commit with a message.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the git repository",
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Commit message",
-                },
-            },
-            "required": ["message"],
-        },
-    },
-    {
-        "name": "git_push",
-        "description": "Push committed changes to remote.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the git repository",
-                },
-            },
-            "required": [],
-        },
-    },
+    # git_commit and git_push are intentionally omitted — agent is read-only on all remotes.
     {
         "name": "git_pull",
         "description": "Pull latest changes from remote.",
