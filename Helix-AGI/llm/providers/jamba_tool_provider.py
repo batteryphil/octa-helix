@@ -60,7 +60,7 @@ def _record_tps(n_tokens: int, elapsed: float) -> float:
     avg = sum(_tps_samples) / len(_tps_samples) if _tps_samples else 0.0
     try:
         import json as _json
-        _stats_path = Path(__file__).resolve().parents[3] / "data" / "inference_stats.json"
+        _stats_path = Path(__file__).resolve().parents[2] / "data" / "inference_stats.json"
         _stats_path.parent.mkdir(parents=True, exist_ok=True)
         _stats_path.write_text(_json.dumps({
             "tps": round(avg, 2),
