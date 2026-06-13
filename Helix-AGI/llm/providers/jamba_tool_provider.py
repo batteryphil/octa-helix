@@ -205,7 +205,7 @@ def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
 
     # ── Format 2: Bracket action tags ────────────────────────────────────────
     for m in re.finditer(r'\[SEARCH\s+(?:web\s+for\s+)?(.+?)\]', text, re.IGNORECASE):
-        calls.append({"name": "search", "arguments": {"query": m.group(1).strip().strip('"\''")}})
+        calls.append({"name": "search", "arguments": {"query": m.group(1).strip().strip("'\"")}})  # noqa: Q000
 
     for m in re.finditer(r'\[READ_FILE\s+(/[^\]\s]+)', text, re.IGNORECASE):
         calls.append({"name": "read_file", "arguments": {"path": m.group(1).strip()}})
@@ -237,7 +237,7 @@ def _parse_tool_calls(text: str) -> Optional[List[Dict]]:
         }})
 
     for m in re.finditer(r'\[read_file\]\s+(?:Read\s+)?(/[^\s"\'*\]]+)', text, re.IGNORECASE):
-        calls.append({"name": "read_file", "arguments": {"path": m.group(1).strip().strip('"\''")}})
+        calls.append({"name": "read_file", "arguments": {"path": m.group(1).strip().strip("'\"")}})
 
     for m in re.finditer(
         r'\[search\]\s+(?:Search\s+(?:for|web\s+for)?\s+)?(.+?)(?:\n|$|\*)',
