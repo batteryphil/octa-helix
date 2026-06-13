@@ -179,30 +179,35 @@ def detect_available_provider() -> Optional[ProviderConfig]:
     _here    = os.path.dirname(os.path.abspath(__file__))
     _project = os.path.normpath(os.path.join(_here, "..", "..", ".."))
 
-    # 0. Falcon-H1-7B-Instruct — highest priority (hybrid Mamba-Transformer, native
-    #    <tool_call> support, 4-bit NF4 GPU-resident ~4GB VRAM, ~15-30 TPS)
-    falcon_h1_cache = os.path.join(_project, "hf_cache",
-                                   "models--tiiuae--Falcon-H1-7B-Instruct")
-    if os.path.isdir(falcon_h1_cache):
-        falcon_h1_weights = glob.glob(
-            os.path.join(falcon_h1_cache, "**", "*.safetensors"), recursive=True
-        )
-        if falcon_h1_weights:
-            logger.info(
-                "Auto-detected Falcon-H1-7B-Instruct — hybrid Mamba/Transformer, "
-                "native tool calling, 4-bit NF4, GPU-resident ~4GB VRAM"
+    # 0. Hermes-3-Llama-3.1-8B — #1 priority.
+    #    Best agentic tool calling, 4-bit NF4, GPU-resident ~5GB VRAM.
+    #    NOTE: Falcon-H1-7B is downloaded but incompatible with RTX 3060 —
+    #    its Mamba selective scan creates 3GB+ intermediate tensors that OOM.
+    for hermes_base in [
+        "/data/hf_cache/hf_cache",                          # old 3TB volume path
+        os.path.join(_project, "hf_cache"),                  # project-local cache
+        os.path.expanduser("~/.cache/huggingface/hub"),      # HF default cache
+    ]:
+        hermes_cache = os.path.join(hermes_base, "models--NousResearch--Hermes-3-Llama-3.1-8B")
+        if os.path.isdir(hermes_cache):
+            hermes_weights = glob.glob(
+                os.path.join(hermes_cache, "**", "*.safetensors"), recursive=True
             )
-            return ProviderConfig(
-                provider_type="falcon_h1",
-                model="tiiuae/Falcon-H1-7B-Instruct",
-                context_window=8192,
-                temperature=0.7,
-                max_output_tokens=512,
-            )
-        else:
-            logger.info("Falcon-H1 cache dir exists but weights not yet downloaded — skipping")
+            if hermes_weights:
+                logger.info(
+                    f"Auto-detected Hermes-3-Llama-3.1-8B at {hermes_base} — "
+                    "4-bit NF4, GPU-resident, native <tool_call> calling"
+                )
+                return ProviderConfig(
+                    provider_type="hermes_tool",
+                    model="NousResearch/Hermes-3-Llama-3.1-8B",
+                    context_window=8192,
+                    temperature=0.7,
+                    max_output_tokens=512,
+                    options={"cache_dir": hermes_base},
+                )
 
-    # 1. AI21-Jamba-1.5-Mini — second priority (52B MoE, CPU inference, 256K context)
+    # 1. AI21-Jamba-1.5-Mini — second priority (256K context, CPU inference)
     jamba_cache = os.path.join(_project, "hf_cache",
                                "models--ai21labs--AI21-Jamba-1.5-Mini")
     if os.path.isdir(jamba_cache):
@@ -223,10 +228,6 @@ def detect_available_provider() -> Optional[ProviderConfig]:
             )
         else:
             logger.info("Jamba cache dir exists but weights not yet downloaded — skipping")
-
-    # 1. Hermes-3-Llama-3.1-8B — fallback (best agentic tool calibration among local models)
-    hermes_cache = os.path.join(_project, "hf_cache",
-                                "models--NousResearch--Hermes-3-Llama-3.1-8B")
     if os.path.isdir(hermes_cache):
         hermes_weights = glob.glob(os.path.join(hermes_cache, "**", "*.safetensors"), recursive=True)
         if hermes_weights:

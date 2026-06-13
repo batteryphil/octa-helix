@@ -25,7 +25,13 @@ logger = logging.getLogger("helix.llm.hermes")
 
 # ── Model config ──────────────────────────────────────────────────────────────
 MODEL_ID  = "NousResearch/Hermes-3-Llama-3.1-8B"
-HF_CACHE  = str(Path(__file__).resolve().parents[3] / "hf_cache")
+import os as _os
+_PROJECT_CACHE = str(Path(__file__).resolve().parents[3] / "hf_cache")
+_DATA_CACHE    = "/data/hf_cache/hf_cache"
+# Prefer /data volume (15GB Hermes weights live there); fall back to project cache
+HF_CACHE = _DATA_CACHE if _os.path.isdir(
+    _os.path.join(_DATA_CACHE, "models--NousResearch--Hermes-3-Llama-3.1-8B")
+) else _PROJECT_CACHE
 
 SYSTEM_PROMPT = (
     "You are Helix, an autonomous AI agent with access to tools.\n"
