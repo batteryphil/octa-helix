@@ -83,7 +83,11 @@ _model     = None
 _tokenizer = None
 _device    = None
 
-_MAX_INPUT_TOKENS = 6000   # Hard cap to prevent VRAM spikes
+_MAX_INPUT_TOKENS = 2048  # RTX 3060: 5.1GB model + 6.8GB free = tight, keep prefill small
+
+# Reduce CUDA memory fragmentation — critical for small VRAM
+import os as _os
+_os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 def _load_engine():
@@ -382,17 +386,35 @@ class FalconToolSession:
         input_ids = input_ids.to(_device)
 
         t0 = time.time()
-        with torch.no_grad():
-            out = _model.generate(
-                input_ids,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.1,
-                pad_token_id=_tokenizer.eos_token_id,
-                eos_token_id=_tokenizer.eos_token_id,
-            )
+        try:
+            with torch.no_grad():
+                out = _model.generate(
+                    input_ids,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    repetition_penalty=1.1,
+                    pad_token_id=_tokenizer.eos_token_id,
+                    eos_token_id=_tokenizer.eos_token_id,
+                )
+        except torch.cuda.OutOfMemoryError:
+            # Emergency: cut input in half and retry
+            logger.error(f"[falcon] CUDA OOM with {input_ids.shape[1]} tokens — retrying at half length")
+            gc.collect()
+            torch.cuda.empty_cache()
+            input_ids = input_ids[:, -(input_ids.shape[1] // 2):]
+            self._last_token_count = input_ids.shape[1]
+            with torch.no_grad():
+                out = _model.generate(
+                    input_ids,
+                    max_new_tokens=min(max_new_tokens, 200),
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    pad_token_id=_tokenizer.eos_token_id,
+                    eos_token_id=_tokenizer.eos_token_id,
+                )
         elapsed = time.time() - t0
 
         # Decode only the new tokens
