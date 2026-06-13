@@ -281,10 +281,18 @@ def read_status() -> Dict[str, Any]:
     if g is not None:
         gamma = round(float(g[0]), 3)
 
-    # Priority 1: heartbeat file written by pulse loop every 10 pulses.
-    # Always current — no dependency on log tail window size.
-    omega = 0.5
+    # Priority 1: pulse_count.txt — written on EVERY pulse, always accurate.
+    # status.json is only written every 5-10 pulses so it always lags.
     pulse = 0
+    PULSE_COUNT_FILE = BASE_DIR / "data" / "pulse_count.txt"
+    if PULSE_COUNT_FILE.exists():
+        try:
+            pulse = int(PULSE_COUNT_FILE.read_text().strip())
+        except Exception:
+            pass
+
+    # Priority 2: status.json for state, pid, and ts (not pulse).
+    omega = 0.5
     state = "UNKNOWN"
     ts = 0
     pid = 0
@@ -294,7 +302,8 @@ def read_status() -> Dict[str, Any]:
             with open(STATUS_FILE) as f:
                 heartbeat = json.load(f)
             state = heartbeat.get("state", "UNKNOWN")
-            pulse = heartbeat.get("pulse", 0)
+            if pulse == 0:
+                pulse = heartbeat.get("pulse", 0)  # fallback only
             ts    = heartbeat.get("ts", 0)
             pid   = heartbeat.get("pid", 0)
         except Exception:
