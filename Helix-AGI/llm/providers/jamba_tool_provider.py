@@ -97,30 +97,25 @@ def _load_engine():
     except ImportError:
         pass
 
-    # GPU: 8GiB for weights — leaves ~3.5GB headroom for activation tensors during
-    # inference (a 52B MoE forward pass needs 2-4GB for activations).
-    # Keeping GPU at 10GiB causes OOM because weights eat 9.6GB leaving <2GB free.
-    # CPU gets 112GiB to absorb the extra layers pushed off the GPU.
-    max_mem = {0: "8GiB", "cpu": "112GiB"}
+    # RTX 3060 has 12GB VRAM. Jamba 52B in bf16 needs ~104GB weights + 4-5GB
+    # for KV cache/activations during inference — impossible to fit both on 12GB.
+    # Solution: load everything to CPU RAM (124GB available) and run inference there.
+    # Slow (~30-60s/pulse) but stable. The GPU embedder still runs on CUDA separately.
+    max_mem = {"cpu": "120GiB"}
     offload_dir = str(Path(__file__).resolve().parents[3] / "offload_cache")
     os.makedirs(offload_dir, exist_ok=True)
 
     _model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         cache_dir=HF_CACHE,
-        device_map="auto",
-        max_memory=max_mem,
+        device_map="cpu",
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        attn_implementation=_attn_impl,
         offload_folder=offload_dir,
     )
     _model.eval()
 
-    _device = next(
-        (p.device for p in _model.parameters() if p.device.type == "cuda"),
-        torch.device("cpu"),
-    )
+    _device = torch.device("cpu")
 
     elapsed = time.time() - t0
     gpu_gb  = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
