@@ -344,21 +344,30 @@ class FalconToolSession:
     def _generate(self, messages: List[Dict], max_new_tokens: int = 400) -> str:
         global _model, _tokenizer, _device
 
-        # Apply chat template
+        # Apply chat template — returns BatchEncoding or plain tensor depending on tokenizer
         try:
-            input_ids = _tokenizer.apply_chat_template(
+            encoded = _tokenizer.apply_chat_template(
                 messages,
                 add_generation_prompt=True,
                 return_tensors="pt",
                 tools=self._tools if self._tools else None,
             )
-        except Exception:
-            # Fallback: manual format if apply_chat_template fails
+            # apply_chat_template may return a BatchEncoding (dict) or plain tensor
+            if hasattr(encoded, 'input_ids'):
+                input_ids = encoded.input_ids
+            elif isinstance(encoded, dict):
+                input_ids = encoded['input_ids']
+            else:
+                input_ids = encoded  # already a tensor
+        except Exception as e:
+            logger.warning(f"[falcon] apply_chat_template failed ({e}), using manual format")
+            # Fallback: manual <|im_start|> format
             text = f"<|im_start|>system\n{self._system_prompt}<|im_end|>\n"
             for m in messages[1:]:
                 text += f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n"
             text += "<|im_start|>assistant\n"
-            input_ids = _tokenizer(text, return_tensors="pt").input_ids
+            encoded = _tokenizer(text, return_tensors="pt")
+            input_ids = encoded.input_ids
 
         # Truncate if needed
         if input_ids.shape[1] > _MAX_INPUT_TOKENS:
