@@ -291,16 +291,22 @@ class Preconscious:
         # spatial awareness from new sensory input (inspired by Hermes's
         # <memory-context> fencing in memory_manager.py)
         #
-        # NOTE — BELIEF FORMATION CONSTRAINT (Gemini Peer Review Q2):
-        # The model has a narcissism attractor: 23/38 beliefs are 'capabilities'.
-        # Injecting an explicit negative constraint here breaks the attractor
-        # without system prompt surgery. This fires every pulse.
-        belief_constraint = (
-            "[BELIEF CONSTRAINT: Do NOT form new beliefs about your own software "
-            "capabilities, response times, or processing functions. "
-            "Focus beliefs on external facts, user objectives, knowledge "
-            "about the world, and novel operational strategies.]"
-        )
+        # NOTE — BELIEF FORMATION CONSTRAINT (Gemini Peer Review Q2, Q2-Pass11):
+        # Q2 Pass 10: inject negative constraint to break capability narcissism loop.
+        # Q2 Pass 11: Semantic Jitter — rotate 7 variants to prevent attention fatigue.
+        # Static strings in 1000+ context windows get zero-weighted by attention heads.
+        # Random selection forces re-evaluation each pulse.
+        try:
+            from training.self_trainer import BELIEF_CONSTRAINT_VARIANTS as _VARIANTS
+            import random as _random
+            belief_constraint = _random.choice(_VARIANTS)
+        except ImportError:
+            belief_constraint = (
+                "[BELIEF CONSTRAINT: Do NOT form new beliefs about your own software "
+                "capabilities, response times, or processing functions. "
+                "Focus beliefs on external facts, user objectives, knowledge "
+                "about the world, and novel operational strategies.]"
+            )
         return (
             "<spatial-awareness>\n"
             "[Recalled context — NOT new input. Background orientation "

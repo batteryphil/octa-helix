@@ -33,22 +33,54 @@ EXPERIENCE_THRESHOLD = 500    # tuples before triggering training — lowered fr
                               # diversity gate + eval loss gate protect quality at this threshold
 TRAIN_STEPS = 100            # LoRA steps per training run
 IDLE_REQUIRED = 600          # 10 min idle before training starts
-MIN_TOOL_DIVERSITY = 2       # unique tool types needed before training
+MIN_TOOL_DIVERSITY = 5       # unique tool types needed before training (raised from 2 per Gemini Q5)
+MAX_SINGLE_TOOL_PCT = 0.70   # no single tool can represent >70% of training set (Q5)
 LORA_LR = 5e-5               # conservative LR (was 2e-4 — too aggressive for small sets)
 LORA_DROPOUT = 0.1           # higher dropout for regularization (was 0.05)
 MAX_TRAIN_EPOCHS = 5         # max passes over data regardless of TRAIN_STEPS
-EVAL_LOSS_TOLERANCE = 1.10   # reject adapter if eval loss > baseline * this
+EVAL_LOSS_TOLERANCE = 1.15   # Q4 Gemini Pass 12: 1.10→1.15 — think+act response has
+                             # higher perplexity variance than act-only format.
+
+# ── Belief Constraint Variants (Q2 — Gemini Pass 11: Semantic Jitter) ────────
+# Static strings in every context window suffer attention fatigue after ~1000 pulses.
+# Rotating through 7 semantic variations forces the attention mechanism to
+# re-evaluate the tokens each cycle rather than treating them as background noise.
+BELIEF_CONSTRAINT_VARIANTS = [
+    ("[BELIEF CONSTRAINT: Do NOT form new beliefs about your own software "
+     "capabilities, response times, or processing functions. "
+     "Focus beliefs on external facts, user objectives, knowledge "
+     "about the world, and novel operational strategies.]"),
+    ("[COGNITIVE RULE: Strictly avoid recording internal capabilities, "
+     "system performance, or self-referential software states as beliefs. "
+     "Prioritize beliefs about external facts, real-world knowledge, and user goals.]"),
+    ("[ATTENTION: Beliefs about what I can or cannot do as software are forbidden. "
+     "Reserve belief formation for discoveries about people, the world, "
+     "strategies, and external knowledge only.]"),
+    ("[RULE — Do not log beliefs about response times, tool availability, "
+     "or internal processing. External facts and world knowledge only.]"),
+    ("[CONSTRAINT: Self-capability beliefs are noise. "
+     "Form beliefs about: what is true in the world, what users need, "
+     "what strategies work, what knowledge matters.]"),
+    ("[IMPORTANT: Your belief store is for external knowledge, not self-description. "
+     "Do NOT create beliefs starting with 'I can', 'I am able to', or 'My capabilities include'.]"),
+    ("[BELIEF FILTER: Reject any belief that describes your own software behavior. "
+     "Accept beliefs about the world, about people, about strategies, "
+     "about discoveries made through tool use.]"),
+]
 
 
 @dataclass
 class ExperienceTuple:
     ts: float
     prompt: str              # the pulse message sent to Hermes
-    response: str            # what Hermes generated
+    think_block: str         # Q4 (Gemini Pass 11): Phase 1 THINK output — must be non-empty
+                             # If empty, tuple excluded from training (would lobotomize THINK phase)
+    response: str            # what Hermes generated (ACT phase output)
     outcome: str             # "tool_executed" | "hallucination" | "prose" | "error"
     tool_name: str           # tool called (if any)
     quality: float           # 0.0–1.0 estimate of response quality
     user_sentiment: str      # "positive" | "negative" | "neutral"
+    mandate_used: bool = False   # Bonus Q: True if mandate injection was required
 
 
 class SelfTrainer:
@@ -71,13 +103,38 @@ class SelfTrainer:
         self._load_existing()
 
     def _load_existing(self):
+        """Count clean (think_block non-empty) tuples already on disk.
+
+        Q3 (Gemini Pass 12): _total_collected must reflect CLEAN tuples only.
+        The 500-tuple LoRA trigger fires on this count. If we count all rows
+        (including 42 legacy tuples without think_block), the trigger fires
+        at row 500 but the training loader only finds 458 usable examples —
+        a deflated batch with 8.4% wasted capacity and a corrupted floor.
+        """
         if not self._exp_path.exists():
             return
         try:
+            import json as _json
+            clean_count = 0
+            total_count = 0
             with self._exp_path.open("r") as f:
-                count = sum(1 for _ in f)
-            self._total_collected = count
-            logger.info(f"[trainer] Found {count} existing experience tuples")
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    total_count += 1
+                    try:
+                        d = _json.loads(line)
+                        if d.get("think_block", "").strip():
+                            clean_count += 1
+                    except Exception:
+                        pass
+            self._total_collected = clean_count  # trigger based on clean count only
+            logger.info(
+                f"[trainer] Found {total_count} total tuples, "
+                f"{clean_count} clean (have think_block) — "
+                f"training triggers at {EXPERIENCE_THRESHOLD} clean."
+            )
         except Exception:
             pass
 
@@ -239,18 +296,35 @@ class SelfTrainer:
             if not pulse_msg:
                 return
 
+            # Q4 (Gemini Pass 11): THINK block is mandatory in training tuples.
+            # If the THINK phase produced no output (mandate pulse, user pulse,
+            # or THINK error), exclude this tuple from LoRA training to prevent
+            # the adapter from learning to bypass the planning phase.
+            think_block = getattr(ctx, "think_block", "") or ""
+            mandate_used = getattr(ctx, "mandate_used", False)
+            if not think_block.strip():
+                logger.debug(
+                    f"[trainer] Discard: no THINK block (mandate={mandate_used}, "
+                    f"tool={tool_name!r}) — excluding to protect planning phase"
+                )
+                return
+
             tup = ExperienceTuple(
                 ts=time.time(),
                 prompt=str(pulse_msg)[:500],
+                think_block=think_block[:500],      # Q4: THINK phase content
                 response=thought[:500],
                 outcome=outcome,
                 tool_name=tool_name,
                 quality=round(quality, 3),
                 user_sentiment="neutral",
+                mandate_used=mandate_used,          # Bonus Q: mandate tracking
             )
 
             with self._lock:
                 self._buffer.append(tup)
+                # Q3 (Gemini Pass 12): increment only for clean tuples
+                # (_total_collected is now clean-count, matching _load_existing)
                 self._total_collected += 1
 
             logger.info(
@@ -381,9 +455,50 @@ class SelfTrainer:
             )
             return
 
-        if not training_pairs:
-            logger.info("[trainer] No valid training pairs — skipping")
+        # Q5 (Gemini Pass 11): Tool concentration cap — no single tool > 70% of dataset.
+        # With 87 tools and a ≥2 gate, 490 search + 10 terminal would still overfit search.
+        # This forces the adapter to generalize the concept of tool calling across schemas.
+        from collections import Counter as _Counter
+        tool_counts = _Counter(ex.tool_name for ex in examples if ex.tool_name)
+        if tool_counts:
+            top_tool, top_count = tool_counts.most_common(1)[0]
+            concentration = top_count / len(examples)
+            if concentration > MAX_SINGLE_TOOL_PCT:
+                logger.warning(
+                    f"[trainer] Concentration gate: '{top_tool}' = {concentration:.1%} of dataset "
+                    f"(max {MAX_SINGLE_TOOL_PCT:.0%}). Delaying training — collect more diverse tuples."
+                )
+                return
+            logger.info(
+                f"[trainer] Concentration OK: top tool '{top_tool}' = {concentration:.1%} "
+                f"(limit {MAX_SINGLE_TOOL_PCT:.0%}), {len(tool_types_seen)} types total"
+            )
+
+        # Q5: Also require think_block in tuples for training (Q4 lobotomy prevention)
+        # Filter out any legacy tuples without think_block (from before this fix)
+        training_pairs_with_think = []
+        skipped_no_think = 0
+        for ex in examples:
+            if ex.outcome == "tool_executed" and ex.tool_name and ex.tool_name in tool_types_seen:
+                think = getattr(ex, 'think_block', '') or ''
+                if think.strip():
+                    # Training format: prompt → think \n tool_call
+                    # Teaching: "given X, think Y, then execute Z"
+                    training_pairs_with_think.append((
+                        ex.prompt,
+                        f"{think}\n{ex.response}"
+                    ))
+                else:
+                    skipped_no_think += 1
+
+        if skipped_no_think:
+            logger.info(f"[trainer] Skipped {skipped_no_think} legacy tuples lacking think_block")
+
+        if not training_pairs_with_think:
+            logger.info("[trainer] No tuples with think_block yet — delay training until new tuples accumulate")
             return
+
+        training_pairs = training_pairs_with_think
 
         logger.info(
             f"[trainer] Diversity OK: {len(tool_types_seen)} tool types — "

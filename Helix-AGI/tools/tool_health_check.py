@@ -1,47 +1,30 @@
 import os
 import json
 import pathlib
-import importlib
-import inspect
-import sys
+import subprocess
 
-def load_modules(directory):
-    modules = []
-    for entry in os.scandir(directory):
-        if entry.is_dir() and not entry.name.startswith('.'):
-            module_name = entry.name
-            sys.path.insert(0, str(entry))
-            try:
-                module = importlib.import_module(module_name)
-                modules.append((module_name, module))
-            finally:
-                sys.path.pop(0)
-    return modules
-
-def get_tool_function(module, function_name):
-    for name, val in inspect.getmembers(module):
-        if name == function_name:
-            return val
-    return None
-
-def run_tool(module, function):
+def run_tool(tool_name, tool_module):
     try:
-        function()
-        return True
+        module = __import__(tool_name)
+        result = module.check_health()
+        return result
     except Exception as e:
-        return False
+        return f"Failed to run {tool_name}: {str(e)}"
 
-def main():
-    tools_directory = pathlib.Path(__file__).parent / 'tools'
-    tool_health = {}
+def check_tool_health():
+    tools_dir = pathlib.Path(__file__).parent / "tools"
+    health_results = {}
 
-    for module_name, module in load_modules(tools_directory):
-        function = get_tool_function(module, 'test')
-        if function:
-            result = run_tool(module, function)
-            tool_health[module_name] = {'status': 'pass' if result else 'fail'}
+    for tool_name in os.listdir(tools_dir):
+        if tool_name.endswith(".py") and not tool_name.startswith("_"):
+            tool_path = tools_dir / tool_name
+            health_results[tool_name] = run_tool(tool_name[:-3], tool_path)
 
-    print(json.dumps(tool_health, indent=2))
+    return json.dumps(health_results, indent=2)
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    health_status = check_tool_health()
+    print(health_status)
+
+    with open("tool_health_check_results.json", "w") as f:
+        f.write(health_status)

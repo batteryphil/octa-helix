@@ -994,6 +994,10 @@ class PulseLoop:
                 lagrangian_before=lagrangian_before or {},
                 lagrangian_after=lagrangian_after or {},
                 injected_belief_ids=injected_belief_ids,
+                # Q4 (Gemini Pass 11): THINK block — must exist for tuple to train
+                think_block=getattr(self._chat, "_last_think_text", ""),
+                # Bonus Q: mandate tracking for decay mechanism
+                mandate_used=getattr(self._chat, "_last_mandate_used", False),
             )
             run_hooks(hook_ctx)
         except Exception as e:
@@ -1054,22 +1058,73 @@ class PulseLoop:
                 f"\nYour last thought: {self._previous_thoughts[:300]}"
             )
 
-        # ── Active Tool Mandate (every 3rd autonomous pulse) ──────────────────
-        # Peer review Q1: tool_call_rate=0% means all tools are decorative.
-        # Every 3rd pulse: pick a tool from registry and mandate its use.
-        # Every 15th pulse: INTROSPECTION MODE — force agent to look inward.
-        if self._pulse_count % 3 == 0:
+        # ── Active Tool Mandate (adaptive interval after LoRA) ────────────────
+        # Bonus Q (Gemini Pass 11): How does the loop know to stop relying on
+        # mandates after LoRA? Answer: mandate decay.
+        #
+        # BASE: every 3rd pulse gets a mandate ([ACTION REQUIRED: call a tool now])
+        # DECAY: after Gen-1 adapter loads, track mandate_used rate over rolling 20
+        # pulses. If mandate_rate < 30% (model is calling tools spontaneously),
+        # increase the mandate interval (less forcing). Reduces to every 10th pulse
+        # as weights mature. Resets if rate spikes (weights degraded or context lost).
+        #
+        # mandate_interval is initialized once in __init__ (see below).
+        # mandate_history is a deque of bools tracking mandate_used per pulse.
+        if not hasattr(self, '_mandate_interval'):
+            self._mandate_interval = 3          # default: every 3rd pulse
+        if not hasattr(self, '_mandate_history'):
+            from collections import deque as _deque
+            self._mandate_history = _deque(maxlen=20)
+        if not hasattr(self, '_adapter_generation'):
+            self._adapter_generation = 0
+
+        # Check if a new adapter was accepted since last pulse
+        try:
+            _adapter_file = __import__('pathlib').Path("data/current_adapter.txt")
+            if _adapter_file.exists():
+                _adapter_gen_now = _adapter_file.stat().st_mtime
+                if not hasattr(self, '_last_adapter_mtime'):
+                    self._last_adapter_mtime = 0
+                if _adapter_gen_now > self._last_adapter_mtime:
+                    self._last_adapter_mtime = _adapter_gen_now
+                    self._adapter_generation += 1
+                    logger.info(
+                        f"[mandate-decay] LoRA Gen-{self._adapter_generation} detected. "
+                        f"Mandate decay window now active."
+                    )
+        except Exception:
+            pass
+
+        # Mandate decay: only active after Gen-1 adapter
+        if self._adapter_generation >= 1 and len(self._mandate_history) >= 10:
+            recent_mandate_rate = sum(self._mandate_history) / len(self._mandate_history)
+            if recent_mandate_rate < 0.30 and self._mandate_interval < 10:
+                self._mandate_interval = min(10, self._mandate_interval + 1)
+                logger.info(
+                    f"[mandate-decay] mandate_rate={recent_mandate_rate:.0%} < 30% — "
+                    f"weights self-directing. Relaxing to every {self._mandate_interval}th pulse."
+                )
+            elif recent_mandate_rate > 0.60 and self._mandate_interval > 3:
+                self._mandate_interval = max(3, self._mandate_interval - 1)
+                logger.info(
+                    f"[mandate-decay] mandate_rate={recent_mandate_rate:.0%} > 60% — "
+                    f"weights need support. Tightening to every {self._mandate_interval}th pulse."
+                )
+
+        # Track this pulse's mandate usage (updated retroactively next pulse from hook_ctx)
+        _this_is_mandate = (self._pulse_count % self._mandate_interval == 0)
+
+        if _this_is_mandate:
+            self._mandate_history.append(True)
             try:
                 from tools.tool_registry import registry
                 import random
-                # Use get_declarations (same path as _ensure_session) then extract names
                 decls = registry.get_declarations(self._active_toolsets)
                 available = [d["name"] for d in decls if "name" in d]
                 if available:
 
                     # Every 15th pulse: introspection mandate (Q15 peer review)
                     if self._pulse_count % 15 == 0:
-                        # Introspection: only suggest tools that actually exist
                         introspection_tools = [t for t in available if any(
                             k in t.lower() for k in
                             ["fitness", "behavior", "curiosity", "metric",
@@ -1088,8 +1143,8 @@ class PulseLoop:
                         # Standard mandate: prefer actionable tools
                         preferred = [t for t in available if any(
                             k in t.lower() for k in
-                            ["search", "note", "task", "belief", "memory",
-                             "metric", "novelty", "url", "read", "write", "journal"]
+                            ["note", "task", "belief", "memory",
+                             "metric", "novelty", "url", "read", "write", "journal", "terminal", "python"]
                         )]
                         tool_name = random.choice(preferred) if preferred else random.choice(available)
                         parts.append(
@@ -1102,6 +1157,7 @@ class PulseLoop:
             except Exception as _e:
                 logger.warning(f"[pulse] Tool mandate failed: {_e}")
         else:
+            self._mandate_history.append(False)
             # Non-mandate pulse: single inline nudge, not a heading.
             # The THINK phase will see this and write an intention naturally;
             # the ACT phase then calls a tool to execute it.

@@ -551,11 +551,22 @@ class Curator:
             # If Gemini rate-limits or errors, extract salient sentences
             # heuristically. Low fidelity but keeps pipeline alive.
             if not gemini_ok:
+                cpu_fallback = []
                 try:
-                    fallback = self._tfidf_fallback_extract(mem_obj["text"])
+                    from core.cpu_coprocessor import coprocessor
+                    if coprocessor.model_path.exists():
+                        cpu_fallback = coprocessor.extract_beliefs(mem_obj["text"])
+                except Exception as e:
+                    logger.warning(f"[curator] CPU coprocessor belief extraction failed: {e}")
+
+                try:
+                    fallback = cpu_fallback if cpu_fallback else self._tfidf_fallback_extract(mem_obj["text"])
                     for content in fallback:
+                        # Q3 (Gemini Pass 11): categorize via keyword router
+                        # instead of dumping everything into 'knowledge'
+                        cat = self._tfidf_categorize(content)
                         extracted.append({
-                            "category": "knowledge",
+                            "category": cat,
                             "content": content,
                             "memory_refs": [mem_obj["memory_id"]] if mem_obj["memory_id"] != -1 else [],
                             "encoding_lagrangian": mem_obj.get("lagrangian_snapshot", {}),
@@ -575,6 +586,11 @@ class Curator:
         its term frequencies weighted against the inverse document frequency
         across all sentences in the chunk. Returns the top N by score,
         filtered to belief-length range (15-250 chars).
+
+        Q3 (Gemini Pass 11): Returns (content, category) tuples rather than
+        raw strings, using keyword routing to assign categories beyond just
+        'knowledge'. Prevents 48h of Gemini downtime from dumping everything
+        into 'knowledge' and polluting the belief graph structure.
         """
         import re, math
 
@@ -605,12 +621,48 @@ class Curator:
         scored = []
         for i, (sent, tf) in enumerate(zip(sentences, tf_per_sent)):
             score = sum(freq * idf.get(term, 0) for term, freq in tf.items())
-            # Penalize very short or very long sentences
             if 15 <= len(sent) <= 250:
                 scored.append((score, sent))
 
         scored.sort(reverse=True)
         return [sent for _, sent in scored[:max_beliefs]]
+
+    @staticmethod
+    def _tfidf_categorize(content: str) -> str:
+        """Lightweight keyword router for TF-IDF fallback beliefs.
+
+        Q3 (Gemini Pass 11): Prevents category collapse when Gemini is offline.
+        Uses deterministic regex matching — zero compute cost.
+        Covers the most common Helix belief categories.
+        """
+        import re
+        s = content.lower()
+
+        # capabilities: things the system/I can do
+        if re.search(r'\bi can\b|\bmy ability\b|\bi wrote\b|\bi am able\b|\bmy tool\b', s):
+            return "capabilities"
+
+        # self_identity: normative rules, values, obligations
+        if re.search(r'\bi should\b|\bi must\b|\bi ought\b|\bhuman oversight\b|\bmy purpose\b|\bi am a\b', s):
+            return "self_identity"
+
+        # people: statements about specific named entities
+        if re.search(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', content):  # "First Last" pattern
+            return "people"
+
+        # desires / preferences
+        if re.search(r'\bi want\b|\bi prefer\b|\bi value\b|\bi enjoy\b|\bi like\b|\bi dislike\b', s):
+            return "desires"
+
+        # skills: procedural sequences
+        if re.search(r'\bfirst\b.{5,50}\bthen\b|\bstep 1\b|\bstep one\b|\bin order to\b', s):
+            return "skills"
+
+        # feedback: lessons learned
+        if re.search(r'\bi learned\b|\bwhen i\b.{5,40}\bi\b|\bworked\b|\bfailed\b|\bmistake\b', s):
+            return "feedback"
+
+        return "knowledge"  # safe default
 
     def _synthesize_from_clusters(self) -> List[Dict[str, Any]]:
         """Synthesizes higher-order insights from pre-built co-occurrence clusters.

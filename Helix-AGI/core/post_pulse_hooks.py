@@ -64,6 +64,12 @@ class PostPulseHookContext:
         "spatial_state", "active_toolsets",
         "memory_id", "lagrangian_before", "lagrangian_after",
         "injected_belief_ids",
+        # Q4 (Gemini Pass 11): THINK phase output — must be in training tuples
+        # so LoRA learns reasoning is a mandatory precursor to tool execution.
+        # If this is empty, the tuple is EXCLUDED from training data.
+        "think_block",          # str: Phase 1 THINK output for this pulse
+        # Bonus Q (Gemini Pass 11): mandate tracking for decay mechanism
+        "mandate_used",         # bool: True if pulse_loop injected a mandate this pulse
         # Writable by hooks — read by self_trainer quality gate
         "novel_belief_added",   # True if belief_detector stored a new belief this pulse
         "last_fitness_delta",   # float set by fitness_evaluator hook
@@ -81,6 +87,8 @@ class PostPulseHookContext:
         lagrangian_before: Optional[Dict[str, Any]] = None,
         lagrangian_after: Optional[Dict[str, Any]] = None,
         injected_belief_ids: Optional[List[str]] = None,
+        think_block: str = "",
+        mandate_used: bool = False,
     ):
         self.thought = thought
         self.events = events or []
@@ -92,8 +100,10 @@ class PostPulseHookContext:
         self.lagrangian_before = lagrangian_before or {}
         self.lagrangian_after = lagrangian_after or {}
         self.injected_belief_ids = injected_belief_ids or []
-        self.novel_belief_added = False    # set True by belief_detector_hook
-        self.last_fitness_delta = 0.0     # set by fitness_evaluator hook
+        self.think_block = think_block       # Phase 1 THINK output
+        self.mandate_used = mandate_used     # True if mandate was injected
+        self.novel_belief_added = False      # set True by belief_detector_hook
+        self.last_fitness_delta = 0.0        # set by fitness_evaluator hook
 
 
 # Type alias for hook functions

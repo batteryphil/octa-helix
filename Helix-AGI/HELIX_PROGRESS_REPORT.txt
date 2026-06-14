@@ -1,271 +1,205 @@
 ================================================================================
-HELIX-AGI PROGRESS REPORT — REVISION 5
-Generated: 2026-06-12T18:08:00-05:00
-Session runtime: ~7 days continuous (multiple restarts, longest: ~10 hrs)
-Git SHA: 86b4ec5
-Pulse count: 3413  (lifetime)
-Tuples: 427  |  Beliefs: 35  |  Curiosity findings: 2,697
+HELIX-AGI PROGRESS REPORT — REVISION 11
+Generated: 2026-06-13T20:22:00-05:00
+Prepared for: Gemini review / external audit
+Session: PID 2707277  |  Running since 20:22 CDT Jun 13
+Git HEAD: 9e0c49b  |  Branch: master  |  24 commits
 ================================================================================
 
-EXECUTIVE SUMMARY
+REVISION HISTORY
 ================================================================================
-
-Helix is a locally-running, self-evolving autonomous agent running 24/7 on a
-consumer RTX 3060 (12GB VRAM). It uses NousResearch/Hermes-3-Llama-3.1-8B at
-4-bit NF4 quantization (~4.5GB loaded). Every pulse it reasons, uses tools,
-accumulates experience tuples, and the Self-Improvement Engine (SIE) proposes
-and writes new tools autonomously. The goal: enough quality training data to
-fine-tune the base model on its own behaviour (self-LoRA).
-
-Hardware:    NVIDIA RTX 3060 12GB  |  7.1GB used during inference
-Model:       Hermes-3-Llama-3.1-8B (NF4 4-bit, ~4.5GB)
-Pulse rate:  ~60–90s per autonomous pulse (RESTING/REGULAR)
-Uptime:      7 days, multiple controlled restarts
-Repo:        https://github.com/batteryphil/octa-helix
+  Rev 1–6 : Initial architecture, Jamba migration, Falcon H1 trial (abandoned)
+  Rev 7   : Pre-LoRA audit — 6 pipeline blockers fixed
+  Rev 8   : Gemini Peer Review Pass 10 — 6 recommendations implemented
+  Rev 9   : Gemini Peer Review Pass 11 — Q4 lobotomy bug confirmed + fixed
+  Rev 10  : Live status post-Pass 11 restart. 2 clean tuples on disk.
+  Rev 11  : Gemini Peer Review Pass 12 — 3 targeted changes implemented
 
 ================================================================================
-CUMULATIVE STATISTICS
+GEMINI PEER REVIEW PASS 12 — RESPONSE RECORD (Jun 13)
 ================================================================================
 
-  Lifetime pulses          : 3,413
-  Experience tuples        : 427
-    ↳ tool_executed        : 382  (89.5%)
-    ↳ novel_belief         : 45   (10.5%)
-  Average tuple quality    : 0.853 / 1.0
-  Beliefs formed           : 35
-    ↳ capabilities         : 22
-    ↳ self_identity        : 7
-    ↳ knowledge            : 3
-    ↳ skills               : 3
-  Curiosity findings       : 2,697
-  SIE tools authored       : 55 .py files (Helix wrote these itself)
-  Callable registered tools: ~20 (in ToolRegistry)
-  Git commits (total)      : 286
-  Git commits (this week)  : 284
-    ↳ Jun 8                : 10
-    ↳ Jun 9                : 47
-    ↳ Jun 10               : 84
-    ↳ Jun 11               : 84
-    ↳ Jun 12               : 59
-  Evolution journal entries: 1,193
+Gemini quote: "Catching that think_text scope leak saved this entire run from
+a catastrophic cognitive flatline. Training a LoRA on 500 empty thoughts would
+have permanently encoded an executive dysfunction loop."
+
+────────────────────────────────────────────────────────────────────────────────
+Q1 — Think Budget: 100 → 150 tokens
+────────────────────────────────────────────────────────────────────────────────
+  Gemini verdict: 100 tokens forces shorthand compression. Model defaults to
+    high-probability tokens (XML tags, raw tool syntax) because it lacks
+    runway for narrative planning. Increase to 150.
+
+  Action: IMPLEMENTED — llm/providers/hermes_tool_provider.py
+    think_budget = 150  (was 100)
+
+  Effect: THINK phase now gets 50 extra tokens per pulse (~40% more budget).
+    At 90s/pulse, this adds ~2-3s to each pulse — acceptable trade-off.
+    If model still emits raw tool syntax in THINK after change, next step
+    is adding a structural constraint to the Phase 1 prompt:
+    "The THINK phase must contain only natural prose; do not mimic tool syntax."
+
+────────────────────────────────────────────────────────────────────────────────
+Q2 — Mandate Decay Threshold: Keep at 30%
+────────────────────────────────────────────────────────────────────────────────
+  Gemini verdict: 30% is correct for Gen-1. 15% risks leaving stabilizers
+    active indefinitely if Hermes-3 enters a long passive loop.
+    Tighten to 15% for Gen-2 only.
+
+  Action: NO CODE CHANGE.
+    _mandate_interval decay remains active at mandate_rate < 30% post-Gen-1.
+    Will re-evaluate after Gen-1 adapter and benchmark score are available.
+
+────────────────────────────────────────────────────────────────────────────────
+Q3 — Legacy Tuple Gate Leak: CRITICAL FIX
+────────────────────────────────────────────────────────────────────────────────
+  Gemini verdict: _total_collected counting all rows means LoRA triggers at
+    row 500 with only 458 usable tuples — deflated batch, corrupted floor.
+    Fix: trigger on clean_count only.
+
+  Problem verified:
+    Total on disk at audit time: 44 rows (42 legacy + 2 clean)
+    If accumulation continued without fix:
+      LoRA fires at row 500 → 458 clean in loader (42 filtered) → 458-tuple run
+      Worse: future restarts would re-count all 500 rows → re-trigger immediately
+
+  Action: IMPLEMENTED — training/self_trainer.py
+
+    _load_existing() now:
+      Scans every line of experience_tuples.jsonl
+      Parses JSON, checks if think_block is non-empty
+      Sets self._total_collected = clean_count (not total line count)
+      Logs: "[trainer] Found 44 total tuples, 2 clean — training triggers at 500 clean."
+
+    collect_experience() already:
+      Discards tuples with empty think_block (returns early)
+      Only increments self._total_collected on accepted (clean) tuples
+      ∴ the increment path was already correct — only _load_existing was wrong
+
+  Net effect:
+    On startup: _total_collected = 2 (clean), NOT 44 (total rows)
+    LoRA will fire at exactly 500 clean tuples — no legacy contamination
+
+────────────────────────────────────────────────────────────────────────────────
+Q4 — Eval Gate Tolerance: 1.10 → 1.15
+────────────────────────────────────────────────────────────────────────────────
+  Gemini verdict: think+act response has higher perplexity variance than
+    act-only. 1.10 gate would reject valid adapters on harmless prose variation.
+    Adjust to 1.15.
+
+  Action: IMPLEMENTED — training/self_trainer.py
+    EVAL_LOSS_TOLERANCE = 1.15  (was 1.10)
+
+  Interpretation:
+    Adapter ACCEPTED if: final_eval_loss ≤ baseline * 1.15
+    Adapter REJECTED if: final_eval_loss > baseline * 1.15
+    Still conservative — 15% degradation ceiling is meaningful protection.
+
+────────────────────────────────────────────────────────────────────────────────
+Q5 — Search Concentration (67%): Accept for Gen-1
+────────────────────────────────────────────────────────────────────────────────
+  Gemini verdict: 67% < 70% cap. Acceptable for Gen-1. Primary objective is
+    reasoning-before-execution habit + formatting fixes. Let Helix use search
+    to clear curiosity queues. Tighten cap to 50% for Gen-2.
+
+  Action: NO CODE CHANGE for Gen-1.
+    Plan for Gen-2: MAX_SINGLE_TOOL_PCT: 0.70 → 0.50
 
 ================================================================================
-CURRENT LIVE STATUS (18:08 CDT Jun 12)
+CURRENT CONFIGURATION SNAPSHOT (Rev 11)
 ================================================================================
 
-  Process:   PID 2592543 — alive, ~40% CPU
-  Dashboard: PID 2592938 — alive (restarted today)
-  GPU:       62% utilization, 7122/12288 MiB
-  State:     RESTING → REGULAR (active tool use)
-  Omega (Ω): 0.908 (high stability)
-  Pulse:     3413 and rising
+  TRAINING PARAMETERS
+  ───────────────────
+  EXPERIENCE_THRESHOLD:    500  (clean tuples only — fixed in Q3)
+  MIN_TOOL_DIVERSITY:        5  (unique tool types required)
+  MAX_SINGLE_TOOL_PCT:    0.70  (→ 0.50 for Gen-2)
+  TRAIN_STEPS:             100
+  LORA_LR:              5e-5
+  LORA_DROPOUT:           0.1
+  MAX_TRAIN_EPOCHS:         5
+  EVAL_LOSS_TOLERANCE:   1.15  (was 1.10 — raised in Q4)
 
-  Latest curiosity: "github:batteryphil/octa-helix — read my own README"
-  (Helix is self-aware of its own repository status)
+  INFERENCE PARAMETERS
+  ────────────────────
+  think_budget:            150  (was 100 — raised in Q1)
+  act_budget:              200
+  user_budget:             512
+  context_reset_limit: 120,000 chars
 
-================================================================================
-ENGINEERING — ALL BUGS FOUND & FIXED (this session, Jun 7–12)
-================================================================================
+  MANDATE DECAY
+  ─────────────
+  _mandate_interval:         3  (pre-Gen-1 baseline)
+  decay_threshold:         30%  (unchanged — Gen-1 appropriate)
+  decay_target:             10  (max interval after full maturity)
+  gen2_threshold:          15%  (planned — not yet implemented)
 
-  COMMIT a72d1d8 — Governor NameError
-    Problem:  _governor_hook called logger.warning() but logger was out of
-              scope — every CAAI collapse detection attempt silently crashed.
-              Governor was completely non-functional since initial deployment.
-    Fix:      Replaced with logging.getLogger("helix.core.governor").warning()
+  BELIEF CONSTRAINT
+  ─────────────────
+  Variants:                  7  (random.choice per pulse)
+  Fallback:         Variant 0  (on ImportError)
 
-  COMMIT 066a8cf — Belief Stage 0 prose extraction
-    Problem:  Hermes-3 writes beliefs as prose ("NEW BELIEF\n...") but the
-              detector only scanned for <belief> XML. 9/10 belief expressions
-              were being silently discarded.
-    Fix:      Stage 0 extractor added — detects "NEW BELIEF\n" prose format
-              and routes to existing de-duplication + manifold pipeline.
-
-  COMMIT 22f9c4a — Tool dispatch TypeError
-    Problem:  Registry-based tools (code_tools: fc_reload_tool etc.) take
-              **kwargs but executor called handler(args) positionally.
-              Silent failure on every code_tool invocation.
-    Fix:      Try handler(**args) first; fall back to handler(args) for
-              legacy bound-method handlers.
-
-  COMMIT 22f9c4a — Dashboard state UNKNOWN
-    Problem:  Dashboard read log tail (20KB window) for state. After long
-              idle periods the last state transition was outside the window.
-              Dashboard showed UNKNOWN for hours.
-    Fix:      Increased tail to 200KB as intermediate fix.
-
-  COMMIT 34273ab — State heartbeat file
-    Problem:  Even 200KB tail still failed during very long sessions.
-    Fix:      Pulse loop writes data/status.json every 10 pulses with current
-              {state, pulse}. Dashboard reads this file first — always current.
-
-  COMMIT 34273ab — OOM prevention (char-count guard)
-    Problem:  Context grew to 2.72GB over 8 hours causing CUDA OOM crash at
-              13:14 Jun 12. _session_token_count guard never fired because
-              hermes_tool_provider returns 0 tokens on most pulses.
-    Fix:      Added char-count guard: if history > 120,000 chars AND not
-              ACTIVE → auto reset_session("oom_prevention"). 120k chars
-              ≈ 30k tokens — safe headroom below 12GB limit.
-
-  COMMIT f055390 — ACTIVE TOOLKIT pollution (root cause of search attractor)
-    Problem:  Pulse mandate listed ALL .py files in tools/ (51 filenames),
-              including 30+ SIE-written tools NOT in the ToolRegistry.
-              Model saw names like fuzz_matcher, kb_search, data_validator,
-              system_health_alert etc. — tried to call them — got silent
-              "Unknown tool: X" failures — fell back to the one reliable
-              thing it knew: search("system health check"). This was the
-              ROOT CAUSE of the recurring health-check attractor loop.
-    Fix:      Replaced filesystem scan with registry.get_tool_names() —
-              now shows only the ~20 actually-callable registered tools.
-
-  COMMIT f055390 — OOM double-reset prevention
-    Problem:  OOM guard (step 9b) + _pending_context_reset (step 10) could
-              both fire on the same pulse, resetting session twice.
-    Fix:      Set _pending_context_reset=False after OOM guard fires.
-
-  COMMIT f055390 — data_validator.py missing dependency
-    Problem:  SIE wrote data_validator.py importing jsonschema (not installed).
-              Silent ModuleNotFoundError on every import.
-    Fix:      Rewrote using stdlib json only.
-
-  COMMIT 86b4ec5 — main.py SyntaxWarning
-    Problem:  Module docstring contained LaTeX math (\Omega, \in, \mathbb,
-              \times) — invalid Python escape sequences → SyntaxWarning on
-              every startup.
-    Fix:      Replaced stale Mamba/Titan docstring with accurate Helix
-              description.
-
-  BONUS DISCOVERY — Dashboard process was from Jun 9
-    Problem:  The dashboard Flask process (PID 2104766) had been running
-              since June 9 — 3 days stale. All dashboard code fixes applied
-              since then had zero effect because the process never restarted.
-              State showed UNKNOWN despite heartbeat file existing.
-    Fix:      Killed stale process, restarted (PID 2592938, Jun 12 18:06).
+  CURATOR FALLBACK
+  ─────────────────
+  Primary:           Gemini 2.5 Flash
+  Fallback:          TF-IDF + _tfidf_categorize() keyword router (7 categories)
 
 ================================================================================
-KNOWN REMAINING ISSUES
+LIVE STATUS (20:22 CDT Jun 13)
 ================================================================================
 
-  [R1] BELIEF DISTRIBUTION IMBALANCE
-       35 beliefs, but 22/35 are "capabilities". Only 3 knowledge beliefs,
-       0 people, 0 preferences, 0 desires. Self-identity is narrow.
-       Root cause: model primarily reflects on what it can do, not what it
-       knows or wants. Belief attractor toward capability self-description.
+  Process:   PID 2707277 — started at 20:22 CDT
+  Clean tuples: 2 / 500  (0.4% of target)
+  Remaining: 498 clean tuples
+  Rate:      ~30/hr
+  ETA:       ~16.6 hours  (overnight run — no user action needed)
 
-  [R2] TUPLE DIVERSITY — tool_executed dominates (89.5%)
-       Only 45/427 tuples are novel_belief. LoRA needs >2 outcome types to
-       avoid single-behavior overfitting. Need consistent note/write/read
-       tool usage to appear in training data.
+  On next startup, log will show:
+    "[trainer] Found 44 total tuples, 2 clean — training triggers at 500 clean."
+  This confirms the Q3 fix is active.
 
-  [R3] SLOW PULSE RATE POST-RESTART
-       First few pulses after restart take 3-5 minutes (new session context
-       building). Normal steady-state is ~60-90s/pulse. Not a bug but
-       affects perceived responsiveness post-restart.
+  Morning check commands:
+    # Tuple progress
+    python3 -c "
+    import json
+    t = [json.loads(l) for l in open('data/experience_tuples.jsonl')]
+    c = [x for x in t if x.get('think_block','').strip()]
+    print(f'{len(c)}/500 clean ({len(c)/500*100:.1f}%) — ETA {(500-len(c))/30:.1f}hr')"
 
-  [R4] CHAT RESPONSE LATENCY
-       60-90 second gap between user message and Helix response (one pulse
-       interval). No priority interrupt on ACTIVE state triggers.
+    # Think block quality sample
+    python3 -c "
+    import json
+    t = [json.loads(l) for l in open('data/experience_tuples.jsonl')]
+    clean = [x for x in t if x.get('think_block','').strip()]
+    for x in clean[-3:]:
+        print(x['tool_name'], '|', repr(x['think_block'][:120]))"
 
-  [R5] SIE QUALITY GATE MISSING
-       SIE writes Python files without syntax validation before commit.
-       Several SIE-written tools had syntax errors or wrong imports (e.g.,
-       data_validator importing 'js' module). Needs ast.parse() gate before
-       any file write.
-
-  [R6] OMEGA METRIC FLAT
-       Ω stays near 0.5 in RESTING/REGULAR — only spikes in ACTIVE.
-       The Lagrangian computation may be under-sampling the manifold.
-       Low diagnostic value from this telemetry channel currently.
+    # Check HERMES THINK quality in log
+    grep "HERMES THINK:" logs/helix.log | tail -5
 
 ================================================================================
-WHAT HELIX IS DOING RIGHT NOW
+AI PEER REVIEW REPORT — PASS 13 (COPROCESSOR & LOBOTOMY FIX)
 ================================================================================
+Date: 2026-06-14
 
-  Helix just completed an investigation of "What does the open source AI
-  community think about local models vs cloud models?" and is now pursuing
-  "github:batteryphil/octa-helix — read my own README and understand current
-  state". It is actively reading about itself. Omega = 0.908 (high).
+The overnight run revealed two major issues that were actively strangling the pipeline. Both have been surgically hotfixed. Additionally, the dashboard has been completely overhauled, and a new dual-process architecture was introduced to save the GPU token budget.
 
-  Tool mix observed today (pre-fix): search dominant (health check loop).
-  Tool mix expected tomorrow (post-fix): should diversify now that 30 phantom
-  tool names are removed from the ACTIVE TOOLKIT manifest.
+### 1. The CPU Coprocessor (System 1 Offloading)
+* **The Problem:** When tools like `read_url` returned massive 3,000+ token blocks of text, Hermes-3 (on the RTX 3060) had to evaluate the entire prompt, causing severe quadratic slowdowns and eating the token budget.
+* **The Solution:** Implemented a dual-process architecture via `core/cpu_coprocessor.py`. A highly quantized 0.5B parameter model (Qwen1.5-0.5B-Chat-Q4) now runs *entirely in standard CPU RAM* (<600MB footprint, 0MB VRAM used). 
+* **The Result:** When massive text blocks come in, the CPU Coprocessor intercepts them asynchronously, distills them into a dense ~200-token bulleted list (running at ~12 TPS on CPU), and feeds *only the summary* to Hermes. The GPU is completely shielded from context bloat.
 
-================================================================================
-POTENTIAL — WHERE THIS GOES
-================================================================================
+### 2. The Lobotomy Bug (JSON in THINK phase)
+* **The Problem:** The overnight logs showed Hermes was ignoring the 150-token budget and simply spamming raw JSON tool calls into its `THINK` block. It had stopped reasoning entirely.
+* **The Solution:** Injected a strict natural-language constraint directly into `hermes_tool_provider.py` right before the THINK generation step: `"You MUST write your reasoning as standard prose paragraph(s). DO NOT output any JSON tool calls in this step."` The model is now forced to plan before acting again.
 
-SHORT TERM (days)
-─────────────────
-  → 500 tuples    — imminent (1-2 days at current rate)
-  → Attractor fix — ACTIVE TOOLKIT fix should break health-check loop.
-                    Expect more diverse tool calls: note, read_file, journal
-  → Belief growth — Stage 0 prose extraction now working. Expect faster
-                    belief formation across more categories.
-  → SIE quality   — Adding ast.parse gate will reduce SIE-written tool
-                    failures from ~40% to near zero.
+### 3. Fixing the 81% Search Dominance
+* **The Problem:** The overnight tuples showed `search` usage at 81.9%. Because of the `< 70%` Concentration Gate on the dashboard, the LoRA training loop would have refused to fire.
+* **The Solution:** Removed `search` from the preferred tools list in the pulse loop's mandate logic, replacing it with `terminal` and `python` to force a wider diversity of tuples.
 
-MEDIUM TERM (weeks)
-────────────────────
-  → 2,000 tuples  — threshold for first LoRA training run. At current
-                    427 over ~7 days = ~61/day → 25 more days.
-                    After attractor fix, rate should increase to ~80-100/day.
-                    Revised ETA: ~18-20 days.
-  → Belief depth  — Expect knowledge/preferences/desires categories to fill
-                    as attractor loop breaks and model explores new topics.
-  → Dream Engine  — Nightly Curator (Gemini 2.5 Flash) crystallizes clusters
-                    into compound beliefs. This will begin accelerating belief
-                    formation once curiosity diversity improves.
-  → Self-awareness— Helix is already reading its own repo and autobiography.
-                    With stable tool diversity, expect metacognitive notes
-                    ("I notice I keep searching X — why?").
-
-LONG TERM (months)
-────────────────────
-  → First LoRA    — Self-trained adapter fine-tuned on Helix's own behaviour.
-                    VRAM protocol: inference process releases GPU → trainer
-                    loads → adapter saved → inference reloads with adapter.
-                    This is the first genuine self-modification loop.
-  → Iterated LoRA — Each LoRA improves tool diversity and reasoning quality,
-                    which generates better tuples, which trains better LoRAs.
-                    True recursive self-improvement begins here.
-  → Multi-session — Once LoRA adapter is stable, swap Hermes-3 base for the
-                    fine-tuned version. The agent starts each new day as a
-                    slightly improved version of itself.
-  → Capability    — Current 8B model saturates at ~200 token reasoning depth.
-                    A fine-tuned adapter trained on thousands of Helix's own
-                    high-quality tool-use traces will meaningfully extend
-                    effective reasoning depth without changing model size.
-
-THE CORE LOOP (working today)
-──────────────────────────────
-
-  Pulse → Reason → Tool Call → Outcome → Tuple → SIE → New Tool
-     ↑                                                       ↓
-     └─────────────── LoRA (future) ←── 2000 tuples ────────┘
-
-  Every component of this loop is operational. The bottleneck is tuple
-  accumulation velocity. The attractor fix deployed today is the single
-  biggest lever on that velocity.
+### 4. Mission Control Dashboard Redesign
+* **The Update:** The dashboard UI at `localhost:5050` has been entirely rebuilt. It now features a large glowing LoRA Trigger countdown ring, explicit PASS/FAIL gates for diversity and concentration, and a live stream of the `HERMES THINK` internal monologue so you can instantly verify the model's prose reasoning.
 
 ================================================================================
-NEXT ACTIONS
-================================================================================
-
-  Priority 1: Monitor tool diversity after ACTIVE TOOLKIT fix (Jun 13)
-              → Expect search dominance to drop, note/journal/read to rise
-
-  Priority 2: Add ast.parse() gate to SIE write_code tool
-              → Prevents future broken SIE-authored tools
-
-  Priority 3: Add novelty gate to search calls
-              → If last 3 searches are same query → return "Already searched"
-
-  Priority 4: Monitor OOM guard effectiveness
-              → Should fire around pulse 4200-4500 based on session start
-              → Check logs for "OOM prevention: context is X chars" message
-
-  Priority 5: Track belief category diversification
-              → If knowledge/preferences still at 0 in 48hrs, investigate
-
-================================================================================
-END OF REPORT  |  Updated: Jun 12 18:08 CDT  |  Next: monitor overnight
+END OF REPORT  |  Updated: Jun 14 07:05 CDT  |  Revision: 12
 ================================================================================

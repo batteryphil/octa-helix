@@ -143,17 +143,31 @@ class WebSearch:
                 ]),
             ]
 
+            final_text = text[:max_chars]
+
             if any(paywall_signals):
                 logger.info(f"Paywall suspected at {url} — trying archive.org fallback")
                 archived = self._try_archive_fallback(url, headers, max_chars)
                 if archived and len(archived.strip()) > 200:
-                    return f"[Via archive.org]\n{archived}"
-                # Also try Google's AMP cache for news articles
-                amp = self._try_amp_fallback(url, headers, max_chars)
-                if amp and len(amp.strip()) > 200:
-                    return f"[Via AMP cache]\n{amp}"
+                    final_text = f"[Via archive.org]\n{archived}"
+                else:
+                    # Also try Google's AMP cache for news articles
+                    amp = self._try_amp_fallback(url, headers, max_chars)
+                    if amp and len(amp.strip()) > 200:
+                        final_text = f"[Via AMP cache]\n{amp}"
 
-            return text[:max_chars]
+            # Compress large text via CPU Coprocessor to save GPU token budget
+            if len(final_text) > 2000:
+                try:
+                    from core.cpu_coprocessor import coprocessor
+                    if coprocessor.model_path.exists():
+                        logger.info(f"Compressing {len(final_text)} chars via CPU coprocessor...")
+                        compressed = coprocessor.compress_context(final_text, max_words=300)
+                        return f"[Compressed by CPU System 1]\n{compressed}"
+                except Exception as e:
+                    logger.warning(f"CPU compression failed: {e}")
+
+            return final_text
 
         except Exception as e:
             logger.error(f"URL read failed for {url}: {e}")
@@ -161,7 +175,17 @@ class WebSearch:
             try:
                 archived = self._try_archive_fallback(url, headers, max_chars)
                 if archived:
-                    return f"[Via archive.org fallback]\n{archived}"
+                    final_text = f"[Via archive.org fallback]\n{archived}"
+                    if len(final_text) > 2000:
+                        try:
+                            from core.cpu_coprocessor import coprocessor
+                            if coprocessor.model_path.exists():
+                                logger.info(f"Compressing fallback {len(final_text)} chars via CPU coprocessor...")
+                                compressed = coprocessor.compress_context(final_text, max_words=300)
+                                return f"[Compressed by CPU System 1]\n{compressed}"
+                        except Exception as e:
+                            pass
+                    return final_text
             except Exception:
                 pass
             return None

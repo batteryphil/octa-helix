@@ -524,7 +524,7 @@ class HermesToolSession:
         #   THINK phase (autonomous):  100 tok — plan only, no tool schema
         #   ACT  phase (autonomous):   200 tok — tool call, with schema
         #   User responses:            512 tok — full prose
-        think_budget = 100
+        think_budget = 150   # Q1 Gemini Pass 12: 100→150 for planning prose headroom
         act_budget   = 200
         token_budget = 512 if not is_autonomous_pulse else act_budget  # legacy path for loop
 
@@ -544,10 +544,17 @@ class HermesToolSession:
         # call JSON for token budget.  The output is then injected as assistant
         # context before Phase 2 so the model knows what it just decided to do.
         think_text = ""
+        self._last_think_text = ""   # reset each call — pulse_loop reads this for hook_ctx
+        self._last_mandate_used = is_mandate_pulse  # track for mandate decay
         if is_autonomous_pulse:
             try:
+                think_messages = list(messages)
+                think_messages.append({
+                    "role": "user",
+                    "content": "Before taking any action, analyze your state, memory, and objectives in natural language. You MUST write your reasoning as standard prose paragraph(s). DO NOT output any JSON tool calls in this step."
+                })
                 think_prompt = self._tokenizer.apply_chat_template(
-                    messages,          # no tools= → model writes prose only
+                    think_messages,          # no tools= → model writes prose only
                     tokenize=False,
                     add_generation_prompt=True,
                 )
@@ -565,6 +572,7 @@ class HermesToolSession:
                     think_out[0][think_ids.shape[1]:], skip_special_tokens=True
                 ).strip()
                 logger.warning(f"HERMES THINK: {think_text[:200]!r}")
+                self._last_think_text = think_text   # expose for hook_ctx.think_block
 
                 # Inject plan as assistant context before ACT phase
                 if think_text:

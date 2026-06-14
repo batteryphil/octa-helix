@@ -513,7 +513,89 @@ def create_app():
             "n_layers": 32,
         })
 
+    @app.route("/api/tuples")
+    def api_tuples():
+        """LoRA training dataset progress — clean tuple count, tool distribution, THINK samples."""
+        TUPLES_PATH = BASE_DIR / "data" / "experience_tuples.jsonl"
+        THRESHOLD = 500
+        data = {
+            "clean": 0, "total": 0, "legacy": 0, "threshold": THRESHOLD,
+            "pct": 0.0, "eta_hours": None,
+            "tool_dist": {}, "unique_tools": 0,
+            "top_tool_pct": 0.0,
+            "diversity_ok": False, "concentration_ok": False,
+            "lora_gen": 0,
+        }
+        if TUPLES_PATH.exists():
+            try:
+                from collections import Counter as _C
+                tool_counts = _C()
+                clean, total = 0, 0
+                for line in TUPLES_PATH.open():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    total += 1
+                    try:
+                        d = json.loads(line)
+                        if d.get("think_block", "").strip():
+                            clean += 1
+                            tn = d.get("tool_name", "")
+                            if tn:
+                                tool_counts[tn] += 1
+                    except Exception:
+                        pass
+                data["clean"]   = clean
+                data["total"]   = total
+                data["legacy"]  = total - clean
+                data["pct"]     = round(clean / THRESHOLD * 100, 1)
+                data["unique_tools"] = len(tool_counts)
+                data["diversity_ok"] = len(tool_counts) >= 5
+                if tool_counts and clean > 0:
+                    top_n = tool_counts.most_common(1)[0][1]
+                    top_pct = top_n / clean
+                    data["top_tool_pct"] = round(top_pct * 100, 1)
+                    data["concentration_ok"] = top_pct <= 0.70
+                data["tool_dist"] = dict(tool_counts.most_common(8))
+                if clean > 5:
+                    data["eta_hours"] = round((THRESHOLD - clean) / 30, 1)
+            except Exception:
+                pass
+        adapter_txt = BASE_DIR / "data" / "current_adapter.txt"
+        adapters_dir = BASE_DIR / "data" / "lora_adapters"
+        if adapter_txt.exists():
+            data["lora_gen"] = 1
+        elif adapters_dir.exists():
+            data["lora_gen"] = len([x for x in adapters_dir.iterdir() if x.is_dir()])
+        return jsonify(data)
+
+    @app.route("/api/think")
+    def api_think():
+        """Last 5 HERMES THINK blocks from the log."""
+        result = []
+        if LOG_PATH.exists():
+            try:
+                with open(LOG_PATH, "rb") as f:
+                    f.seek(max(0, f.seek(0, 2) - 80_000))
+                    tail = f.read().decode("utf-8", errors="replace")
+                for line in tail.split("\n"):
+                    m = re.search(r"HERMES THINK: '(.+)'$", line)
+                    if m:
+                        think = m.group(1).replace("\\n", " ").strip()
+                        ts_m = re.search(r"(\d{2}:\d{2}:\d{2})", line)
+                        ts = ts_m.group(1) if ts_m else ""
+                        result.append({
+                            "ts": ts,
+                            "text": think[:200],
+                            "is_json": think.strip().startswith("{"),
+                        })
+                result = result[-5:]
+            except Exception:
+                pass
+        return jsonify({"thinks": result})
+
     return app
+
 
 
 def main():
