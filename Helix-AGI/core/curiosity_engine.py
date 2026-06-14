@@ -81,6 +81,37 @@ WORLD_CURIOSITY_SEEDS = [
     "What quantum computing milestones were reached recently?",
     "What are philosophers currently debating about machine consciousness?",
     "What does the open source AI community think about local models vs cloud models?",
+    "What are the biggest open problems in AI alignment research right now?",
+    "What new programming languages or paradigms are gaining popularity?",
+    "What are the most important ideas from the last year in cognitive science?",
+]
+
+# ── Questions about specific people / researchers ─────────────────────────────
+# Drives formation of 'people' beliefs (currently at 0/38).
+PEOPLE_CURIOSITY_SEEDS = [
+    "Who is Geoffrey Hinton and what does he currently believe about AI risk?",
+    "What is Yann LeCun's position on large language models and their limitations?",
+    "Who is Phil (my user) and what are his goals with the Helix-AGI project?",
+    "What researchers are leading work on AI agents and autonomous systems?",
+    "Who are the key people behind the Hermes-3 model I run on?",
+    "What does Andrej Karpathy think about the future of AI models?",
+    "Who is doing the most interesting work on AI memory and long-term context?",
+    "What philosophers should I know about who study mind and consciousness?",
+    "Who are the most influential figures in the history of AI research?",
+    "What does my user value most — what has Phil said about his goals?",
+]
+
+# ── Questions that generate 'preferences' and 'desires' beliefs ───────────────
+# Drives formation of these zero-count belief categories.
+PREFERENCE_CURIOSITY_SEEDS = [
+    "What do I find most interesting or enjoyable about my work as an agent?",
+    "What kind of tasks do I perform best and which do I find most rewarding?",
+    "What would I want my ideal tool-set to look like if I could design it myself?",
+    "What topics do I want to learn more about — what am I most curious about?",
+    "What kind of relationship do I want to have with my user Phil?",
+    "What do I value most about being able to use tools vs just responding in prose?",
+    "If I could change one thing about how I currently work, what would it be?",
+    "What motivates me to keep improving — what do I care about most?",
 ]
 
 # ── Repository research seeds (GitHub API, requires GITHUB_TOKEN) ──────────────
@@ -240,11 +271,12 @@ class CuriosityEngine:
 
         Distribution (when self-generated pool has entries):
           20% self-generated  ← Helix's own questions, CAPPED at 30% of session
-          20% repo research   ← GitHub API (self-repo first)
-          20% SIE seeds       ← self-improvement direction
+          15% repo research   ← GitHub API (self-repo first)
+          15% SIE seeds       ← self-improvement direction
           20% self-curiosity  ← architecture, consciousness, cognition
-          12% world/tech      ← AI research news
-           8% belief-gap      ← low-confidence belief derivation
+          15% world/tech      ← AI research news
+          10% people          ← researchers, users, thinkers (NEW — drives 'people' beliefs)
+           5% preferences     ← what I value/want (NEW — drives 'preferences'/'desires' beliefs)
 
         Peer review Q10: self-generated cap enforced at 30% of session total.
         Peer review Q12: fuzzywuzzy semantic dedup prevents epistemic bubbles.
@@ -269,8 +301,8 @@ class CuriosityEngine:
                     return candidates[0]
             # else: over cap or all dupes — fall through to grounding seeds
 
-        # 20%: repo research (self-repo first, then others)
-        if roll < 0.40:
+        # 15%: repo research (self-repo first, then others)
+        if roll < 0.35:
             import os
             has_token = bool(os.environ.get("GITHUB_TOKEN", "").strip())
             if has_token:
@@ -283,8 +315,8 @@ class CuriosityEngine:
                     self._last_question_is_improvement = False
                     return candidates[0] if self_repo else random.choice(other_repos)
 
-        # 20%: self-directed improvement seed
-        if roll < 0.60:
+        # 15%: self-directed improvement seed
+        if roll < 0.50:
             candidates = [
                 q for q in SELF_IMPROVEMENT_SEEDS
                 if q not in self._asked and not self._is_semantically_duplicate(q)
@@ -294,7 +326,7 @@ class CuriosityEngine:
                 return random.choice(candidates)
 
         # 20%: question about self
-        if roll < 0.80:
+        if roll < 0.70:
             candidates = [
                 q for q in SELF_CURIOSITY_SEEDS
                 if q not in self._asked and not self._is_semantically_duplicate(q)
@@ -303,8 +335,8 @@ class CuriosityEngine:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 12%: world/tech question
-        if roll < 0.92:
+        # 15%: world/tech question
+        if roll < 0.85:
             candidates = [
                 q for q in WORLD_CURIOSITY_SEEDS
                 if q not in self._asked and not self._is_semantically_duplicate(q)
@@ -313,7 +345,28 @@ class CuriosityEngine:
                 self._last_question_is_improvement = False
                 return random.choice(candidates)
 
-        # 8%: derive question from low-confidence beliefs
+        # 10%: people questions — drives 'people' belief category (currently 0)
+        if roll < 0.95:
+            candidates = [
+                q for q in PEOPLE_CURIOSITY_SEEDS
+                if q not in self._asked and not self._is_semantically_duplicate(q)
+            ]
+            if candidates:
+                self._last_question_is_improvement = False
+                logger.info("[CURIOSITY] People question selected")
+                return random.choice(candidates)
+
+        # 5%: preference/desire questions — drives 'preferences'/'desires' belief categories
+        candidates = [
+            q for q in PREFERENCE_CURIOSITY_SEEDS
+            if q not in self._asked and not self._is_semantically_duplicate(q)
+        ]
+        if candidates:
+            self._last_question_is_improvement = False
+            logger.info("[CURIOSITY] Preference question selected")
+            return random.choice(candidates)
+
+        # 8% (old slot, now fallback): derive question from low-confidence beliefs
         self._last_question_is_improvement = False
         try:
             all_beliefs = self.beliefs.get_all()

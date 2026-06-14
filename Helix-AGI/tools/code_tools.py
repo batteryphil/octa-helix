@@ -163,9 +163,21 @@ def fc_write_code(path: str, content: str) -> str:
         size = resolved.stat().st_size
         logger.info(f"[code_tools] write_code: {path} ({size} bytes)")
         _log_to_journal("write_code", path, content[:200], "written")
-        return (f"[write_code OK] Written {size} bytes to {path}.\n"
-                f"Call reload_tool('{path}') to activate immediately, "
-                f"or it will be active on next restart.")
+        result_msg = f"[write_code OK] Written {size} bytes to {path}."
+
+        # Auto-reload tools/ files so they enter the registry immediately.
+        # This closes the gap where SIE writes tools but forgets to call reload_tool().
+        if path.startswith("tools/") and path.endswith(".py"):
+            try:
+                reload_result = fc_reload_tool(path)
+                logger.info(f"[code_tools] auto-reload after write: {reload_result[:80]}")
+                result_msg += f"\n[auto-reload] {reload_result}"
+            except Exception as _re:
+                result_msg += f"\n[auto-reload FAILED] {_re} — call reload_tool('{path}') manually."
+        else:
+            result_msg += f"\nCall reload_tool('{path}') to activate immediately, or it will be active on next restart."
+
+        return result_msg
     except Exception as e:
         # Attempt restore from backup
         if backup is not None:
