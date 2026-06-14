@@ -290,11 +290,23 @@ class Preconscious:
         # Wrap in context fencing so the LLM distinguishes recalled
         # spatial awareness from new sensory input (inspired by Hermes's
         # <memory-context> fencing in memory_manager.py)
+        #
+        # NOTE — BELIEF FORMATION CONSTRAINT (Gemini Peer Review Q2):
+        # The model has a narcissism attractor: 23/38 beliefs are 'capabilities'.
+        # Injecting an explicit negative constraint here breaks the attractor
+        # without system prompt surgery. This fires every pulse.
+        belief_constraint = (
+            "[BELIEF CONSTRAINT: Do NOT form new beliefs about your own software "
+            "capabilities, response times, or processing functions. "
+            "Focus beliefs on external facts, user objectives, knowledge "
+            "about the world, and novel operational strategies.]"
+        )
         return (
             "<spatial-awareness>\n"
             "[Recalled context — NOT new input. Background orientation "
             "from the spatial mind.]\n\n"
-            f"{inner}\n"
+            f"{inner}\n\n"
+            f"{belief_constraint}\n"
             "</spatial-awareness>"
         ), injected_belief_ids, self._last_cluster_centroid
 

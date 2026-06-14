@@ -415,6 +415,27 @@ class SelfTrainer:
         VRAM_LOCK.clear()   # block send_message() immediately
         unload_engine()     # free ~4.8 GB from inference model
 
+        # ── VRAM FLUSH (Gemini Peer Review Q5) ─────────────────────────────
+        # PyTorch's memory allocator leaves residual fragmentation after model
+        # deletion. Explicit double-flush before loading training model (7.2GB)
+        # prevents allocation panics during backward pass on RTX 3060 12GB.
+        import gc as _gc
+        import torch as _torch
+        _gc.collect()
+        if _torch.cuda.is_available():
+            _torch.cuda.empty_cache()
+            _torch.cuda.synchronize()   # ensure all pending CUDA ops complete
+        logger.info(
+            f"[trainer] VRAM after unload: "
+            f"{_torch.cuda.memory_allocated()/1e9:.2f}GB allocated, "
+            f"{_torch.cuda.memory_reserved()/1e9:.2f}GB reserved"
+        )
+
+        # Enforce expandable segments for training window (backward pass needs
+        # large contiguous allocation for gradient buffers)
+        import os as _os
+        _os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
         training_model = None
         adapter_accepted = False
         adapter_path = None
@@ -544,6 +565,13 @@ class SelfTrainer:
                 )
                 adapter_path = None  # don't load this adapter
 
+            # ── Step 4c: Post-LoRA benchmark (accepted adapters only) ────────
+            # Gemini Peer Review Q7: define a specific, measurable task to prove
+            # the adapter actually improved multi-step reasoning.
+            # Fires while training model is still loaded (pre-VRAM-free).
+            if adapter_accepted and eval_pairs:
+                self._run_post_lora_benchmark(training_model, tokenizer, baseline_eval_loss)
+
             # ── Step 5: Free training model VRAM ────────────────────────────
             del training_model
             training_model = None
@@ -569,6 +597,139 @@ class SelfTrainer:
                 f"[trainer] Training window closed — inference resumed "
                 f"({'adapter active' if adapter_accepted else 'base model unchanged'})"
             )
+
+    def _run_post_lora_benchmark(self, model, tokenizer, baseline_eval_loss: float):
+        """Run the canonical post-LoRA verification benchmark.
+
+        Gemini Peer Review Q7: "What specific, measurable task will you assign
+        Helix to prove the parametric update improved multi-step reasoning?"
+
+        The benchmark:
+          3 canonical prompts, each requiring a 3-step tool sequence:
+            1. search → write_code → run_python
+               (research a topic, write a tool, test it)
+            2. read_code → write_code → reload_tool
+               (read existing code, improve it, register it)
+            3. search → recall_memory → write_note
+               (research, connect to existing knowledge, store finding)
+
+          Metric: Does the model output correctly-structured JSON tool calls
+          in the right sequence? Count how many of the 3 targets the model
+          nails without hallucination or format error.
+
+          Comparison: This score is stored alongside baseline_eval_loss so
+          future adapters can be compared longitudinally.
+
+        Results written to data/lora_benchmark_results.jsonl.
+        Does NOT affect whether the adapter is accepted — that is already decided.
+        """
+        import json as _json
+        import datetime
+
+        BENCHMARK_PROMPTS = [
+            # Task 1: research → build → test
+            {
+                "prompt": (
+                    "[THINK] I want to research transformer attention mechanisms "
+                    "and write a tool that summarizes key papers.\n"
+                    "[ACT] First I should search for information, then write the tool, then test it.\n"
+                    "Step 1:"
+                ),
+                "expected_steps": ["search", "write_code", "run_python"],
+                "description": "research → build → test",
+            },
+            # Task 2: read → improve → register
+            {
+                "prompt": (
+                    "[THINK] The kb_search tool could be improved. "
+                    "I should read its source, improve it, and register the new version.\n"
+                    "[ACT] Step 1:"
+                ),
+                "expected_steps": ["read_code", "write_code", "reload_tool"],
+                "description": "read → improve → register",
+            },
+            # Task 3: research → connect → store
+            {
+                "prompt": (
+                    "[THINK] I found something interesting about neuromorphic computing. "
+                    "I want to connect it to my existing beliefs and store a finding.\n"
+                    "[ACT] Step 1:"
+                ),
+                "expected_steps": ["search", "recall_memory", "write_note"],
+                "description": "research → connect → store",
+            },
+        ]
+
+        results = []
+        model.eval()
+
+        for task in BENCHMARK_PROMPTS:
+            try:
+                ids = tokenizer(
+                    task["prompt"],
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=256,
+                ).input_ids
+                ids = ids.to(next(model.parameters()).device)
+
+                with __import__("torch").no_grad():
+                    out = model.generate(
+                        ids,
+                        max_new_tokens=80,
+                        do_sample=False,         # greedy — deterministic
+                        temperature=1.0,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+
+                generated = tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+
+                # Score: how many expected tool names appear in the output, in order
+                score = 0
+                search_start = 0
+                for tool_name in task["expected_steps"]:
+                    idx = generated.find(f'"{tool_name}"', search_start)
+                    if idx >= 0:
+                        score += 1
+                        search_start = idx + 1
+
+                results.append({
+                    "task": task["description"],
+                    "expected": task["expected_steps"],
+                    "score": score,
+                    "max_score": len(task["expected_steps"]),
+                    "output_snippet": generated[:200],
+                })
+                logger.info(
+                    f"[benchmark] {task['description']}: {score}/{len(task['expected_steps'])} steps correct"
+                )
+            except Exception as _be:
+                logger.warning(f"[benchmark] Task '{task['description']}' failed: {_be}")
+                results.append({"task": task["description"], "score": 0, "error": str(_be)})
+
+        total_score = sum(r.get("score", 0) for r in results)
+        max_total = sum(r.get("max_score", 3) for r in results)
+
+        record = {
+            "ts": datetime.datetime.utcnow().isoformat(),
+            "adapter_generation": len(list(self._adapter_dir.glob("adapter_*"))),
+            "baseline_eval_loss": baseline_eval_loss,
+            "benchmark_score": total_score,
+            "benchmark_max": max_total,
+            "benchmark_pct": round(100 * total_score / max(max_total, 1), 1),
+            "tasks": results,
+        }
+
+        try:
+            bench_path = self._data_dir / "lora_benchmark_results.jsonl"
+            with open(bench_path, "a", encoding="utf-8") as _f:
+                _f.write(_json.dumps(record) + "\n")
+            logger.info(
+                f"[benchmark] ✅ RESULT: {total_score}/{max_total} steps "
+                f"({record['benchmark_pct']}%) — written to {bench_path.name}"
+            )
+        except Exception as _we:
+            logger.warning(f"[benchmark] Failed to write results: {_we}")
 
     def get_stats(self) -> dict:
         return {

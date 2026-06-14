@@ -500,9 +500,13 @@ class Curator:
         return text
 
     def _extract_beliefs(self, memories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Uses the auxiliary LLM to extract beliefs from raw memories."""
+        """Uses the auxiliary LLM to extract beliefs from raw memories.
+
+        Falls back to TF-IDF heuristic extraction if Gemini API fails
+        (Gemini Peer Review Q6 — Curator dependency risk).
+        """
         extracted = []
-        
+
         # This prompt enforces the belief_format_spec.md
         system_prompt = """
         You are the Curator. Extract durable beliefs from the provided memories.
@@ -522,13 +526,14 @@ class Curator:
         Output ONLY a raw JSON list: [{"category": "...", "content": "..."}]
         No markdown, no code fences, no explanation. Just the JSON array.
         """
-        
+
         for mem_obj in memories:
+            gemini_ok = False
             try:
                 response = self.llm_client.generate(prompt=mem_obj["text"], system_instruction=system_prompt)
                 raw_text = self._strip_code_fences(response.text)
                 parsed = json.loads(raw_text)
-                
+
                 # Attach metadata to each extracted belief
                 for p in parsed:
                     if not isinstance(p, dict):
@@ -536,12 +541,76 @@ class Curator:
                     p["memory_refs"] = [mem_obj["memory_id"]] if mem_obj["memory_id"] != -1 else []
                     p["encoding_lagrangian"] = mem_obj.get("lagrangian_snapshot", {})
                     p["injected_belief_ids"] = mem_obj.get("belief_ids", [])
-                    
+
                 extracted.extend([p for p in parsed if isinstance(p, dict)])
+                gemini_ok = True
             except Exception as e:
-                logger.error(f"Extraction failed for memory: {e}")
-                
+                logger.warning(f"[curator] Gemini extraction failed ({e}) — using TF-IDF fallback")
+
+            # ── TF-IDF fallback (Gemini Peer Review Q6) ──────────────────
+            # If Gemini rate-limits or errors, extract salient sentences
+            # heuristically. Low fidelity but keeps pipeline alive.
+            if not gemini_ok:
+                try:
+                    fallback = self._tfidf_fallback_extract(mem_obj["text"])
+                    for content in fallback:
+                        extracted.append({
+                            "category": "knowledge",
+                            "content": content,
+                            "memory_refs": [mem_obj["memory_id"]] if mem_obj["memory_id"] != -1 else [],
+                            "encoding_lagrangian": mem_obj.get("lagrangian_snapshot", {}),
+                            "injected_belief_ids": mem_obj.get("belief_ids", []),
+                            "_fallback": True,
+                        })
+                except Exception as _fe:
+                    logger.error(f"[curator] TF-IDF fallback also failed: {_fe}")
+
         return extracted
+
+    @staticmethod
+    def _tfidf_fallback_extract(text: str, max_beliefs: int = 3) -> List[str]:
+        """Extract salient sentences via TF-IDF when Gemini is unavailable.
+
+        Pure Python, zero dependencies. Scores each sentence by the sum of
+        its term frequencies weighted against the inverse document frequency
+        across all sentences in the chunk. Returns the top N by score,
+        filtered to belief-length range (15-250 chars).
+        """
+        import re, math
+
+        # Split into sentences
+        sentences = [s.strip() for s in re.split(r'[.!?]\s+', text) if len(s.strip()) >= 15]
+        if not sentences:
+            return []
+
+        # Build term frequency per sentence
+        def tokenize(s):
+            return re.findall(r'\b[a-zA-Z]{4,}\b', s.lower())
+
+        # IDF: log(N / df) where df = number of sentences containing term
+        from collections import Counter, defaultdict
+        N = len(sentences)
+        df = defaultdict(int)
+        tf_per_sent = []
+        for sent in sentences:
+            tokens = tokenize(sent)
+            tf = Counter(tokens)
+            tf_per_sent.append(tf)
+            for term in set(tokens):
+                df[term] += 1
+
+        idf = {term: math.log(N / count) for term, count in df.items() if count > 0}
+
+        # Score each sentence
+        scored = []
+        for i, (sent, tf) in enumerate(zip(sentences, tf_per_sent)):
+            score = sum(freq * idf.get(term, 0) for term, freq in tf.items())
+            # Penalize very short or very long sentences
+            if 15 <= len(sent) <= 250:
+                scored.append((score, sent))
+
+        scored.sort(reverse=True)
+        return [sent for _, sent in scored[:max_beliefs]]
 
     def _synthesize_from_clusters(self) -> List[Dict[str, Any]]:
         """Synthesizes higher-order insights from pre-built co-occurrence clusters.
