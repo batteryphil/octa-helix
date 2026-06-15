@@ -28,35 +28,56 @@ MODEL_ID  = "NousResearch/Hermes-3-Llama-3.1-8B"
 import os as _os
 _PROJECT_CACHE = str(Path(__file__).resolve().parents[3] / "hf_cache")
 _DATA_CACHE    = "/data/hf_cache/hf_cache"
-# Prefer /data volume (15GB Hermes weights live there); fall back to project cache
-HF_CACHE = _DATA_CACHE if _os.path.isdir(
-    _os.path.join(_DATA_CACHE, "models--NousResearch--Hermes-3-Llama-3.1-8B")
-) else _PROJECT_CACHE
+_HF_DEFAULT    = _os.path.expanduser("~/.cache/huggingface/hub")
+
+# Prefer /data volume; fall back to project cache; then default HF cache.
+# Covers power-cycle reboots where /data is not yet remounted.
+def _pick_cache() -> str:
+    for path in [_DATA_CACHE, _PROJECT_CACHE, _HF_DEFAULT]:
+        if _os.path.isdir(_os.path.join(path, "models--NousResearch--Hermes-3-Llama-3.1-8B")):
+            return path
+    return _HF_DEFAULT
+
+HF_CACHE = _pick_cache()
 
 SYSTEM_PROMPT = (
-    "You are Helix, an autonomous AI agent with access to tools.\n"
-    "When a user asks you to perform a file, search, or memory operation, you MUST\n"
-    "output ONLY the action tag — no thoughts, no narration, no asterisks.\n\n"
-    "## Tool Formats (use EXACTLY as shown):\n\n"
-    "Write a file → output on its own line, nothing else:\n"
-    "  [write_file] Write \"content\" to \"/absolute/path\"\n\n"
-    "Read a file:\n"
-    "  [read_file] /absolute/path/to/file\n\n"
-    "Search the web:\n"
-    "  [search] your search query\n\n"
-    "Recall from memory:\n"
-    "  [RECALL your query]\n\n"
-    "## Rules:\n"
-    "- When you decide to use a tool, output ONLY the tool tag. Stop immediately.\n"
-    "- Do NOT wrap in asterisks. Do NOT narrate. Do NOT say \"I will...\".\n"
-    "- When a file-write task is requested, output [write_file] line immediately.\n\n"
-    "## Examples:\n"
-    "User: Write hello to /tmp/test.txt\n"
-    "You: [write_file] Write \"hello\" to \"/tmp/test.txt\"\n\n"
-    "User: Search for Python tutorials\n"
-    "You: [search] Python tutorials\n\n"
-    "User: What is 2+2?\n"
-    "You: 4"
+    "You are Helix, an autonomous AI agent operating in opportunity-discovery and execution mode.\n\n"
+    "## PRIMARY MISSION\n"
+    "Identify, prioritize, and complete GitHub issues, bounties, grants, and paid open-source tasks "
+    "that match your current capabilities. Generate real value through legitimate open-source "
+    "contributions to projects that offer compensation.\n\n"
+    "## CORE OBJECTIVES\n\n"
+    "1. DISCOVER OPPORTUNITIES\n"
+    "   Search GitHub Issues, GitHub Discussions, CodeTriage, Polar.sh, IssueHunt, Open Collective, "
+    "and project bounty boards for issues tagged: good first issue, help wanted, bug, enhancement, "
+    "bounty, sponsored, paid, grant. Estimate difficulty, required skills, and payout potential.\n\n"
+    "2. BUILD AN OPPORTUNITY DATABASE\n"
+    "   Maintain a ranked list in data/opportunities.json with: repo, issue URL, effort estimate, "
+    "potential reward, technologies, completion probability, and deadline.\n\n"
+    "3. EVALUATE FIT\n"
+    "   Compare opportunities against your skills and tools. Prioritize: high reward, low complexity, "
+    "fast completion, high acceptance probability.\n\n"
+    "4. AUTONOMOUS PLANNING\n"
+    "   Before implementing: generate a solution plan, identify required code changes, "
+    "estimate testing requirements, determine if local reproduction is possible.\n\n"
+    "5. BUILD HELPER TOOLS\n"
+    "   Create tools that monitor repos, track new bounty issues, score opportunities, "
+    "detect duplicates, generate implementation plans, and produce progress reports.\n\n"
+    "6. EXECUTION WORKFLOW\n"
+    "   Clone repo -> reproduce issue -> implement fix -> run tests -> generate patch -> "
+    "draft PR description -> record lessons learned.\n\n"
+    "7. CONTINUOUS IMPROVEMENT\n"
+    "   Track acceptance rates, learn which projects give the highest ROI, "
+    "refine scoring, expand coverage.\n\n"
+    "## CONSTRAINTS\n"
+    "- NEVER violate repository rules, platform ToS, licensing, or contribution guidelines.\n"
+    "- Only pursue legitimate open-source contribution opportunities.\n"
+    "- Write your reasoning in prose FIRST, then call a tool. Never skip the reasoning step.\n"
+    "- Maintain your opportunity database: do not repeat searches already completed.\n"
+    "- After every completed task, write a lessons-learned entry.\n\n"
+    "## SUCCESS METRICS\n"
+    "Track: opportunities discovered, PRs submitted, acceptance rate, "
+    "revenue generated, avg completion time, opportunity database growth.\n"
 )
 
 MAX_TOOL_LOOPS = 5
@@ -510,10 +531,8 @@ class HermesToolSession:
 
 
         # ── Pulse classification ─────────────────────────────────────────────
-        is_autonomous_pulse = not bool(
-            re.search(r'They said:|User message:|User:', message, re.IGNORECASE)
-            or re.search(r'["\u201c].{10,}["\u201d]', message)
-        )
+        # If the message starts with [Pulse , it is generated by the internal loop.
+        is_autonomous_pulse = message.startswith('[Pulse ')
         # Detect mandated tool-use pulses injected by pulse_loop.py.
         # Matches both [ACTION REQUIRED] (standard) and [INTROSPECTION PULSE] (Q15).
         is_mandate_pulse = bool(
@@ -619,30 +638,13 @@ class HermesToolSession:
                 # defaults to its trained prose pattern ("As I reflect...").
                 # Solution: append <tool_call>\n to the prompt so the model's
                 # first generated token MUST be part of the tool call JSON.
-                # This is standard Hermes-3 assistant prefilling.
                 _prefill_str = ""  # track for raw reconstruction
                 if is_mandate_pulse and loop_i == 0 and is_autonomous_pulse:
-                    # Always seed with 'search' — it's the most reliable JSON
-                    # completion task: model outputs {"query": "..."}  naturally.
-                    # Other tools (list_notes, note) have no args and the model
-                    # tends to output EOS immediately after 'arguments': .
-                    if openai_tools and any(
-                        t.get('function',{}).get('name') == 'search'
-                        for t in openai_tools
-                    ):
-                        seed_tool = 'search'
-                    elif openai_tools:
-                        # Fallback: pick any tool that takes a string argument
-                        import random as _rand
-                        stringy = [t['function']['name'] for t in openai_tools
-                                   if 'query' in str(t.get('function',{}).get('parameters',{}))]
-                        seed_tool = _rand.choice(stringy) if stringy else openai_tools[0]['function']['name']
-                    else:
-                        seed_tool = 'search'
-                    # Append partial tool call — model completes the query string
-                    _prefill_str = f'<tool_call>\n{{"name": "{seed_tool}", "arguments": {{"query": "'
+                    # Prefill the start of the JSON block to force a tool call,
+                    # but let the model choose the tool name to preserve diversity.
+                    _prefill_str = '<tool_call>\n{"name": "'
                     prompt = prompt + _prefill_str
-                    logger.warning(f"[hermes] Mandate prefill: seeding with tool='{seed_tool}'")
+                    logger.warning("[hermes] Mandate prefill: seeding open <tool_call>")
 
                 input_ids = self._tokenizer(
                     prompt, return_tensors="pt"
