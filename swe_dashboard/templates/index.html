@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SWE-agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f1115;
+            color: #e2e8f0;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.15) 0%, transparent 50%);
+        }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        .pulse-dot { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+
+        .chat-bubble-agent {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 1rem 1rem 1rem 0.25rem;
+            position: relative;
+        }
+
+        .terminal-block {
+            background: #0f1115;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+        
+        .repo-item {
+            transition: all 0.2s ease;
+        }
+        .repo-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .repo-item.active {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, transparent 100%);
+            border-left: 3px solid #818cf8;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col overflow-hidden">
+    <!-- Top Nav -->
+    <header class="h-16 border-b border-white/10 flex items-center justify-between px-6 shrink-0 z-10 glass-panel rounded-none">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-robot text-white text-sm"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-white">SWE-agent</h1>
+                <p class="text-[10px] text-indigo-300 uppercase tracking-widest leading-none">Autonomous Engine</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 bg-indigo-500/10 px-4 py-1.5 rounded-full border border-indigo-500/20">
+                <i class="fa-solid fa-code-pull-request text-indigo-400 text-sm"></i>
+                <span class="text-xs font-semibold text-indigo-300 uppercase tracking-wide">PRs Submitted: <span id="pr-counter" class="text-white font-bold ml-1">0</span></span>
+            </div>
+            <div class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+                <div class="w-2 h-2 bg-green-400 rounded-full pulse-dot"></div>
+                <span class="text-xs font-medium text-slate-300 uppercase tracking-wide">Docker Active</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-80 border-r border-white/10 flex flex-col shrink-0 glass-panel rounded-none z-0">
+            <div class="p-4 border-b border-white/5">
+                <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Active Repositories</h2>
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+                    <input type="text" placeholder="Search tasks..." class="w-full bg-black/20 border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors">
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto" id="repo-list">
+                <!-- Repos injected here -->
+            </div>
+        </aside>
+
+        <!-- Main Content (Chat/Trajectory) -->
+        <main class="flex-1 flex flex-col relative z-0">
+            <!-- Header for current task -->
+            <div class="h-14 border-b border-white/5 flex items-center px-6 shrink-0 bg-black/20 backdrop-blur-sm">
+                <h3 class="font-medium text-slate-200" id="current-task-name">Select a trajectory</h3>
+                <span class="ml-auto text-xs mono text-slate-500" id="current-task-status"></span>
+            </div>
+
+            <!-- Feed -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-6" id="trajectory-feed">
+                <div class="flex flex-col items-center justify-center h-full text-slate-500">
+                    <i class="fa-regular fa-compass text-4xl mb-4 opacity-50"></i>
+                    <p>Select a repository run from the sidebar to view the agent's progress.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentTrajId = null;
+
+        async function fetchTrajectories() {
+            try {
+                const res = await fetch('/api/trajectories');
+                const data = await res.json();
+                renderRepoList(data);
+            } catch (err) {
+                console.error("Failed to fetch trajectories:", err);
+            }
+        }
+        
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('pr-counter').textContent = data.pr_count;
+            } catch (err) {
+                console.error("Failed to fetch stats:", err);
+            }
+        }
+
+        function renderRepoList(repos) {
+            const list = document.getElementById('repo-list');
+            list.innerHTML = '';
+            
+            if (repos.length === 0) {
+                list.innerHTML = '<div class="p-4 text-sm text-slate-500 text-center">No active runs found.</div>';
+                return;
+            }
+
+            repos.forEach(repo => {
+                const div = document.createElement('div');
+                div.className = `repo-item p-4 border-b border-white/5 cursor-pointer flex items-center justify-between ${repo.id === currentTrajId ? 'active' : ''}`;
+                div.onclick = () => loadTrajectory(repo.id, repo.name, repo.status);
+                
+                const statusColor = repo.status === 'Active' ? 'text-green-400' : (repo.status.includes('Error') ? 'text-red-400' : 'text-slate-400');
+                const icon = repo.name.includes('python') || repo.name.includes('django') ? 'fa-python' : 'fa-github';
+                
+                div.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center shrink-0 border border-white/10">
+                            <i class="fa-brands ${icon} text-slate-300"></i>
+                        </div>
+                        <div class="truncate">
+                            <h4 class="text-sm font-medium text-slate-200 truncate">${repo.name.substring(0, 25)}...</h4>
+                            <p class="text-[11px] mono text-slate-500 mt-0.5 truncate">${repo.id}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <div class="w-1.5 h-1.5 rounded-full bg-current ${statusColor}"></div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        async function loadTrajectory(id, name, status) {
+            currentTrajId = id;
+            document.getElementById('current-task-name').textContent = name;
+            document.getElementById('current-task-status').textContent = status;
+            fetchTrajectories(); // Refresh list to update active state
+            
+            const feed = document.getElementById('trajectory-feed');
+            feed.innerHTML = '<div class="text-center text-slate-500 mt-10"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i></div>';
+            
+            try {
+                const res = await fetch(`/api/trajectory/${encodeURIComponent(id)}`);
+                const data = await res.json();
+                
+                if (data.error) {
+                    feed.innerHTML = `<div class="text-red-400 p-4">${data.error}</div>`;
+                    return;
+                }
+                
+                renderFeed(data.steps);
+            } catch (err) {
+                feed.innerHTML = `<div class="text-red-400 p-4">Error loading trajectory.</div>`;
+            }
+        }
+
+        function renderFeed(steps) {
+            const feed = document.getElementById('trajectory-feed');
+            feed.innerHTML = '';
+            
+            if (steps.length === 0) {
+                feed.innerHTML = '<div class="text-center text-slate-500 mt-10">No steps recorded yet.</div>';
+                return;
+            }
+            
+            steps.forEach((step, idx) => {
+                const isCommand = step.action && step.action.includes("run_command");
+                const isEdit = step.action && (step.action.includes("edit") || step.action.includes("create"));
+                
+                const div = document.createElement('div');
+                div.className = 'flex gap-4 fade-in';
+                div.style.animationDelay = `${Math.min(idx * 0.05, 1)}s`;
+                
+                let contentHTML = '';
+                
+                if (step.thought) {
+                    contentHTML += `<p class="text-sm text-slate-300 leading-relaxed mb-3">${step.thought.replace(/\\n/g, '<br>')}</p>`;
+                }
+                
+                if (step.action) {
+                    contentHTML += `
+                        <div class="terminal-block mt-2 mb-2 overflow-hidden">
+                            <div class="bg-white/5 px-3 py-1.5 text-xs text-slate-400 border-b border-white/10 flex items-center justify-between">
+                                <span class="uppercase tracking-wider">Action</span>
+                                <i class="fa-solid fa-terminal"></i>
+                            </div>
+                            <div class="p-3 text-xs mono text-green-400 whitespace-pre-wrap">${step.action}</div>
+                        </div>
+                    `;
+                }
+                
+                if (step.observation) {
+                    // Limit observation output if it's too long
+                    let obs = step.observation;
+                    if (obs.length > 1000) obs = obs.substring(0, 1000) + '\n... [output truncated]';
+                    
+                    contentHTML += `
+                        <div class="terminal-block mt-2 overflow-hidden opacity-80">
+                            <div class="bg-white/5 px-3 py-1.5 text-[10px] text-slate-500 border-b border-white/10 uppercase tracking-wider">Observation</div>
+                            <div class="p-3 text-[11px] mono text-slate-300 whitespace-pre-wrap max-h-60 overflow-y-auto">${obs}</div>
+                        </div>
+                    `;
+                }
+                
+                div.innerHTML = `
+                    <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 mt-1">
+                        <i class="fa-solid fa-robot text-slate-400 text-xs"></i>
+                    </div>
+                    <div class="chat-bubble-agent flex-1 p-4 shadow-xl">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold text-indigo-400">SWE-Agent</span>
+                            <span class="text-[10px] text-slate-500 mono">Step ${idx + 1}</span>
+                        </div>
+                        ${contentHTML}
+                    </div>
+                `;
+                
+                feed.appendChild(div);
+            });
+            
+            // Scroll to bottom
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        // Initial load
+        fetchTrajectories();
+        fetchStats();
+        
+        // Auto refresh
+        setInterval(() => {
+            fetchTrajectories();
+            fetchStats();
+        }, 5000);
+        
+        // Auto refresh active trajectory
+        setInterval(() => {
+            if (currentTrajId) {
+                // In a real app we'd fetch only new steps, but re-fetching all is fine for this demo
+                loadTrajectory(currentTrajId, document.getElementById('current-task-name').textContent, document.getElementById('current-task-status').textContent);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
